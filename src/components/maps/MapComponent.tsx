@@ -5,13 +5,20 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for default markers in react-leaflet
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+// Fix for default markers in react-leaflet - this is crucial!
+const DefaultIcon = L.icon({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  tooltipAnchor: [16, -28],
+  shadowSize: [41, 41]
 });
+
+// Set the default icon
+L.Marker.prototype.options.icon = DefaultIcon;
 
 interface MapComponentProps {
   center: [number, number];
@@ -52,6 +59,20 @@ export default function MapComponent({
   onMapClick,
   className = 'h-96 w-full'
 }: MapComponentProps) {
+  const mapRef = useRef<L.Map | null>(null);
+  
+  useEffect(() => {
+    // Additional fix for SSR issues
+    if (typeof window !== 'undefined') {
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+      });
+    }
+  }, []);
+
   return (
     <div className={className}>
       <MapContainer
@@ -59,6 +80,8 @@ export default function MapComponent({
         zoom={zoom}
         style={{ height: '100%', width: '100%' }}
         className="rounded-lg"
+        ref={mapRef}
+        key={`map-${center[0]}-${center[1]}`} // Force re-render on center change
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -69,9 +92,9 @@ export default function MapComponent({
         
         {markers.map((marker, index) => (
           <Marker
-            key={index}
+            key={`marker-${index}-${marker.position[0]}-${marker.position[1]}`}
             position={marker.position}
-            icon={marker.icon}
+            icon={marker.icon || DefaultIcon} // Always provide a fallback icon
           >
             {marker.popup && <Popup>{marker.popup}</Popup>}
           </Marker>

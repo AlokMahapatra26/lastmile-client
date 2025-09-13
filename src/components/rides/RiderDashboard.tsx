@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
 import { useAuthStore } from '@/store/auth';
 import { useRideStore } from '@/store/rides';
 import { Button } from '@/components/ui/button';
@@ -11,12 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { CreateRideRequest } from '@/types';
-
-// Dynamically import map to avoid SSR issues
-const MapComponent = dynamic(() => import('@/components/maps/MapComponent'), {
-  ssr: false,
-  loading: () => <div className="h-96 bg-gray-200 animate-pulse rounded-lg" />
-});
+import MapWrapper from '@/components/maps/MapWrapper'; // Changed this import
 
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
@@ -27,10 +21,20 @@ export default function RiderDashboard() {
   const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([37.7749, -122.4194]); // Default to SF
+  const [isMapReady, setIsMapReady] = useState(false);
+
+  useEffect(() => {
+    // Delay map rendering to ensure client-side only
+    const timer = setTimeout(() => {
+      setIsMapReady(true);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     // Get user's current location
-    if (navigator.geolocation) {
+    if (navigator.geolocation && isMapReady) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
@@ -47,7 +51,7 @@ export default function RiderDashboard() {
     getMyRides().catch((error) => {
       toast.error(error.message);
     });
-  }, [getMyRides]);
+  }, [getMyRides, isMapReady]);
 
   const handleMapClick = (lat: number, lng: number) => {
     if (!pickupCoords) {
@@ -159,14 +163,20 @@ export default function RiderDashboard() {
               />
             </div>
             
-            {/* Map */}
+            {/* Map - Only render when ready */}
             <div className="h-64">
-              <MapComponent
-                center={mapCenter}
-                markers={mapMarkers}
-                onMapClick={handleMapClick}
-                className="h-full w-full"
-              />
+              {isMapReady ? (
+                <MapWrapper
+                  center={mapCenter}
+                  markers={mapMarkers}
+                  onMapClick={handleMapClick}
+                  className="h-full w-full"
+                />
+              ) : (
+                <div className="h-full w-full bg-gray-200 animate-pulse rounded-lg flex items-center justify-center">
+                  <div className="text-gray-500">Loading map...</div>
+                </div>
+              )}
             </div>
             
             <p className="text-sm text-gray-600">
@@ -253,7 +263,7 @@ export default function RiderDashboard() {
                       </div>
                       <div className="text-right">
                         <p className="font-medium">
-                          ${(ride.final_fare || ride.estimated_fare) / 100}
+                          ${((ride.final_fare || ride.estimated_fare) / 100).toFixed(2)}
                         </p>
                         {ride.driver && (
                           <p className="text-sm text-gray-600">
