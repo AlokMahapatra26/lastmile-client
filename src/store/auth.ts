@@ -15,10 +15,12 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  isHydrated: boolean; // NEW: Track hydration state
   login: (email: string, password: string) => Promise<void>;
   register: (userData: RegisterData) => Promise<void>;
   logout: () => void;
   updateProfile: (data: Partial<User>) => Promise<void>;
+  setHydrated: (state: boolean) => void; // NEW: Method to set hydration state
 }
 
 interface RegisterData {
@@ -36,6 +38,11 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isLoading: false,
+      isHydrated: false, // NEW: Initially false
+
+      setHydrated: (state: boolean) => {
+        set({ isHydrated: state });
+      },
 
       login: async (email: string, password: string) => {
         set({ isLoading: true });
@@ -84,6 +91,11 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({ user: state.user, token: state.token }),
+      onRehydrateStorage: () => (state) => {
+        // NEW: Called when data is loaded from localStorage
+        console.log('Auth state rehydrated:', state);
+        state?.setHydrated(true);
+      },
     }
   )
 );

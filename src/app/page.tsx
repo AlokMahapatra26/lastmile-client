@@ -9,18 +9,37 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Car, MapPin, CreditCard, Shield } from 'lucide-react';
 
 export default function HomePage() {
-  const { user } = useAuthStore();
+  const { user, isHydrated } = useAuthStore(); // NEW: Also get isHydrated
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect to dashboard if already logged in
-    if (user) {
+    // Only redirect if hydration is complete AND user exists
+    if (isHydrated && user) {
       router.push('/dashboard');
     }
-  }, [user, router]);
+  }, [user, router, isHydrated]); // NEW: Include isHydrated
 
+  // NEW: Show loading while hydrating
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render anything if user exists (redirect in progress)
   if (user) {
-    return <div>Redirecting...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-600">Redirecting to dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -43,7 +62,7 @@ export default function HomePage() {
         </nav>
       </header>
 
-      {/* Hero Section */}
+      {/* Rest of your home page content... */}
       <main className="container mx-auto px-4 py-12">
         <div className="text-center mb-16">
           <h1 className="text-5xl font-bold text-gray-900 mb-6">
