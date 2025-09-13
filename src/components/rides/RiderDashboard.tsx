@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { CreateRideRequest } from '@/types';
-import MapWrapper from '@/components/maps/MapWrapper'; // Changed this import
+import MapWrapper from '@/components/maps/MapWrapper';
+import PaymentModal from '@/components/payments/PaymentModal';
 
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
@@ -20,20 +21,58 @@ export default function RiderDashboard() {
   const [destinationAddress, setDestinationAddress] = useState('');
   const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<[number, number] | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>([37.7749, -122.4194]); // Default to SF
+  const [mapCenter, setMapCenter] = useState<[number, number]>([37.7749, -122.4194]);
   const [isMapReady, setIsMapReady] = useState(false);
+  
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [rideForPayment, setRideForPayment] = useState<any>(null);
 
+  // Updated handlePaymentSuccess function with proper error handling
+  const handlePaymentSuccess = async () => {
+    try {
+      console.log('Payment successful, refreshing rides...');
+      
+      // 1. Refresh ride data from backend
+      await getMyRides();
+      
+      // 2. Close the payment modal
+      setShowPaymentModal(false);
+      
+      // 3. Clear the ride for payment
+      setRideForPayment(null);
+      
+      // 4. Show success message
+      toast.success('Payment completed successfully!');
+      
+      console.log('Payment success: rides refreshed and modal closed');
+    } catch (error) {
+      console.error('Failed to refresh rides after payment:', error);
+      toast.error('Payment succeeded but failed to refresh ride data');
+      
+      // Still close the modal even if refresh fails
+      setShowPaymentModal(false);
+      setRideForPayment(null);
+    }
+  };
+
+  // Handle manual payment trigger
+  const handlePayNow = (ride: any) => {
+    console.log('Manual payment triggered for ride:', ride.id);
+    setRideForPayment(ride);
+    setShowPaymentModal(true);
+  };
+
+  // Initialize map
   useEffect(() => {
-    // Delay map rendering to ensure client-side only
     const timer = setTimeout(() => {
       setIsMapReady(true);
     }, 100);
-
     return () => clearTimeout(timer);
   }, []);
 
+  // Get location and fetch rides
   useEffect(() => {
-    // Get user's current location
     if (navigator.geolocation && isMapReady) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -48,10 +87,48 @@ export default function RiderDashboard() {
       );
     }
 
+    // Fetch rides on component mount
     getMyRides().catch((error) => {
       toast.error(error.message);
     });
   }, [getMyRides, isMapReady]);
+
+  // Debug logging for rides
+  useEffect(() => {
+    console.log('Current rides status:', rides.map(ride => ({
+      id: ride.id.substring(0, 8),
+      status: ride.status,
+      payment_status: ride.payment_status
+    })));
+  }, [rides]);
+
+  // Updated useEffect for payment modal - check for rides needing payment
+  useEffect(() => {
+    console.log('Checking rides for payment requirements. Total rides:', rides.length);
+    
+    // Find rides that need payment
+    const awaitingPaymentRide = rides.find(ride => 
+      ride.status === 'awaiting_payment' && 
+      ride.payment_status === 'pending'
+    );
+    
+    console.log('Awaiting payment ride found:', awaitingPaymentRide?.id || 'none');
+    
+    if (awaitingPaymentRide && !showPaymentModal) {
+      console.log('Showing payment modal for ride:', awaitingPaymentRide.id);
+      setRideForPayment(awaitingPaymentRide);
+      setShowPaymentModal(true);
+    } else if (!awaitingPaymentRide && showPaymentModal && rideForPayment) {
+      // Close modal if no awaiting payment rides and modal is open
+      console.log('No awaiting payment rides found, but modal is open. Checking if current ride is paid...');
+      const currentRideStatus = rides.find(r => r.id === rideForPayment.id);
+      if (currentRideStatus && (currentRideStatus.status === 'completed' || currentRideStatus.payment_status === 'paid')) {
+        console.log('Current ride is now paid/completed, closing modal');
+        setShowPaymentModal(false);
+        setRideForPayment(null);
+      }
+    }
+  }, [rides, showPaymentModal, rideForPayment]);
 
   const handleMapClick = (lat: number, lng: number) => {
     if (!pickupCoords) {
@@ -63,7 +140,6 @@ export default function RiderDashboard() {
       setDestinationAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
       toast.success('Destination set');
     } else {
-      // Reset and set new pickup
       setPickupCoords([lat, lng]);
       setDestinationCoords(null);
       setPickupAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
@@ -91,7 +167,6 @@ export default function RiderDashboard() {
     try {
       await createRide(rideData);
       toast.success('Ride requested successfully!');
-      // Reset form
       setPickupCoords(null);
       setDestinationCoords(null);
       setPickupAddress('');
@@ -107,9 +182,17 @@ export default function RiderDashboard() {
       case 'accepted': return 'bg-blue-100 text-blue-800';
       case 'picked_up': return 'bg-purple-100 text-purple-800';
       case 'in_progress': return 'bg-indigo-100 text-indigo-800';
+      case 'awaiting_payment': return 'bg-orange-100 text-orange-800';
       case 'completed': return 'bg-green-100 text-green-800';
       case 'cancelled': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'awaiting_payment': return 'Awaiting Payment';
+      default: return status.replace('_', ' ');
     }
   };
 
@@ -163,7 +246,7 @@ export default function RiderDashboard() {
               />
             </div>
             
-            {/* Map - Only render when ready */}
+            {/* Map */}
             <div className="h-64">
               {isMapReady ? (
                 <MapWrapper
@@ -204,7 +287,7 @@ export default function RiderDashboard() {
                 <div className="flex justify-between">
                   <span className="font-medium">Status:</span>
                   <Badge className={getStatusColor(currentRide.status)}>
-                    {currentRide.status.replace('_', ' ')}
+                    {getStatusText(currentRide.status)}
                   </Badge>
                 </div>
                 <div>
@@ -227,6 +310,16 @@ export default function RiderDashboard() {
                     </p>
                   </div>
                 )}
+                
+                {/* Payment button for awaiting_payment status */}
+                {currentRide.status === 'awaiting_payment' && (
+                  <Button 
+                    onClick={() => handlePayNow(currentRide)}
+                    className="w-full mt-4"
+                  >
+                    Pay Now - ${(currentRide.estimated_fare / 100).toFixed(2)}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -248,7 +341,7 @@ export default function RiderDashboard() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <Badge className={getStatusColor(ride.status)}>
-                            {ride.status.replace('_', ' ')}
+                            {getStatusText(ride.status)}
                           </Badge>
                           <span className="text-sm text-gray-500">
                             {new Date(ride.created_at).toLocaleDateString()}
@@ -270,6 +363,17 @@ export default function RiderDashboard() {
                             {ride.driver.first_name} {ride.driver.last_name}
                           </p>
                         )}
+                        
+                        {/* Pay button for unpaid rides */}
+                        {ride.status === 'awaiting_payment' && ride.payment_status === 'pending' && (
+                          <Button 
+                            size="sm" 
+                            onClick={() => handlePayNow(ride)}
+                            className="mt-2"
+                          >
+                            Pay Now
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -279,6 +383,20 @@ export default function RiderDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Modal */}
+      {rideForPayment && (
+        <PaymentModal
+          ride={rideForPayment}
+          isOpen={showPaymentModal}
+          onClose={() => {
+            console.log('Payment modal closed manually');
+            setShowPaymentModal(false);
+            setRideForPayment(null);
+          }}
+          onPaymentSuccess={handlePaymentSuccess}
+        />
+      )}
     </div>
   );
 }

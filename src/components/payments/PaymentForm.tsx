@@ -47,6 +47,15 @@ function CheckoutForm({ rideId, amount, onSuccess }: PaymentFormProps) {
         toast.error(error.message);
       } else {
         toast.success('Payment successful!');
+        
+        // TEMPORARY FIX: Manually update ride status since webhook isn't configured
+        try {
+          await api.put(`/api/rides/${rideId}/status`, { status: 'completed' });
+          console.log('✅ Ride status updated to completed');
+        } catch (statusError) {
+          console.error('❌ Failed to update ride status:', statusError);
+        }
+        
         onSuccess();
       }
     } catch (error: any) {
