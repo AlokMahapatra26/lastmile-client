@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -73,6 +73,9 @@ export default function MapComponent({
     }
   }, []);
 
+  // Create polyline positions from markers (when there are 2 or more markers)
+  const polylinePositions = markers.length >= 2 ? markers.map(marker => marker.position) : [];
+
   return (
     <div className={className}>
       <MapContainer
@@ -99,6 +102,31 @@ export default function MapComponent({
             {marker.popup && <Popup>{marker.popup}</Popup>}
           </Marker>
         ))}
+
+        {/* NEW: Draw polyline path between markers */}
+        {polylinePositions.length >= 2 && (
+          <Polyline
+            positions={polylinePositions}
+            pathOptions={{
+              color: '#3B82F6',      // Blue color
+              weight: 4,             // Line thickness
+              opacity: 0.8,          // Line opacity
+              dashArray: '10, 10',   // Dashed line (optional)
+            }}
+          />
+        )}
+
+        {/* Optional: Add direction arrows (enhanced visual) */}
+        {polylinePositions.length >= 2 && (
+          <Polyline
+            positions={polylinePositions}
+            pathOptions={{
+              color: '#1E40AF',      // Darker blue for arrow effect
+              weight: 2,
+              opacity: 0.6,
+            }}
+          />
+        )}
       </MapContainer>
     </div>
   );

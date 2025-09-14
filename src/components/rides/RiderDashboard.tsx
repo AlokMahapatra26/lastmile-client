@@ -14,6 +14,7 @@ import MapWrapper from '@/components/maps/MapWrapper';
 import PaymentModal from '@/components/payments/PaymentModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ProfileSettings from '@/components/profile/ProfileSettings';
+import { calculateDistance, formatDistance, estimateTravelTime } from '@/utils/distance';
 
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
@@ -29,6 +30,11 @@ export default function RiderDashboard() {
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [rideForPayment, setRideForPayment] = useState<any>(null);
+
+  // Calculate distance when both coordinates are available
+  const distance = pickupCoords && destinationCoords 
+    ? calculateDistance(pickupCoords, destinationCoords)
+    : null;
 
   // Updated handlePaymentSuccess function with proper error handling
   const handlePaymentSuccess = async () => {
@@ -229,7 +235,6 @@ export default function RiderDashboard() {
         </TabsList>
 
         <TabsContent value="rides">
-          {/* All existing ride content is placed here */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Book a Ride */}
             <Card>
@@ -256,6 +261,26 @@ export default function RiderDashboard() {
                   />
                 </div>
                 
+                {/* Distance and Time Display */}
+                {distance && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">Trip Details</p>
+                        <p className="text-xs text-blue-600">Estimated straight-line distance</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-blue-700">
+                          {formatDistance(distance)}
+                        </p>
+                        <p className="text-xs text-blue-600">
+                          ~{estimateTravelTime(distance)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {/* Map */}
                 <div className="h-64">
                   {isMapReady ? (
@@ -274,6 +299,11 @@ export default function RiderDashboard() {
                 
                 <p className="text-sm text-gray-600">
                   Click on the map to set pickup and destination locations
+                  {distance && (
+                    <span className="block mt-1 text-blue-600 font-medium">
+                      Distance: {formatDistance(distance)} • Est. time: {estimateTravelTime(distance)}
+                    </span>
+                  )}
                 </p>
                 
                 <Button
@@ -281,7 +311,9 @@ export default function RiderDashboard() {
                   disabled={isLoading || !pickupCoords || !destinationCoords}
                   className="w-full"
                 >
-                  {isLoading ? 'Requesting...' : 'Request Ride'}
+                  {isLoading ? 'Requesting...' : 
+                    distance ? `Request Ride (${formatDistance(distance)})` : 'Request Ride'
+                  }
                 </Button>
               </CardContent>
             </Card>
