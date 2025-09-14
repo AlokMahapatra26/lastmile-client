@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { CreateRideRequest } from '@/types';
 import MapWrapper from '@/components/maps/MapWrapper';
 import PaymentModal from '@/components/payments/PaymentModal';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ProfileSettings from '@/components/profile/ProfileSettings';
 
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
@@ -220,169 +222,181 @@ export default function RiderDashboard() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Book a Ride */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Book a Ride</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="pickup">Pickup Address</Label>
-              <Input
-                id="pickup"
-                value={pickupAddress}
-                onChange={(e) => setPickupAddress(e.target.value)}
-                placeholder="Enter pickup location or click on map"
-              />
-            </div>
-            <div>
-              <Label htmlFor="destination">Destination Address</Label>
-              <Input
-                id="destination"
-                value={destinationAddress}
-                onChange={(e) => setDestinationAddress(e.target.value)}
-                placeholder="Enter destination or click on map"
-              />
-            </div>
-            
-            {/* Map */}
-            <div className="h-64">
-              {isMapReady ? (
-                <MapWrapper
-                  center={mapCenter}
-                  markers={mapMarkers}
-                  onMapClick={handleMapClick}
-                  className="h-full w-full"
-                />
-              ) : (
-                <div className="h-full w-full bg-gray-200 animate-pulse rounded-lg flex items-center justify-center">
-                  <div className="text-gray-500">Loading map...</div>
-                </div>
-              )}
-            </div>
-            
-            <p className="text-sm text-gray-600">
-              Click on the map to set pickup and destination locations
-            </p>
-            
-            <Button
-              onClick={handleRequestRide}
-              disabled={isLoading || !pickupCoords || !destinationCoords}
-              className="w-full"
-            >
-              {isLoading ? 'Requesting...' : 'Request Ride'}
-            </Button>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="rides" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="rides">My Rides</TabsTrigger>
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+        </TabsList>
 
-        {/* Current Ride */}
-        {currentRide && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Current Ride</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="font-medium">Status:</span>
-                  <Badge className={getStatusColor(currentRide.status)}>
-                    {getStatusText(currentRide.status)}
-                  </Badge>
+        <TabsContent value="rides">
+          {/* All existing ride content is placed here */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Book a Ride */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Book a Ride</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="pickup">Pickup Address</Label>
+                  <Input
+                    id="pickup"
+                    value={pickupAddress}
+                    onChange={(e) => setPickupAddress(e.target.value)}
+                    placeholder="Enter pickup location or click on map"
+                  />
                 </div>
                 <div>
-                  <span className="font-medium">From:</span>
-                  <p className="text-sm text-gray-600">{currentRide.pickup_address}</p>
+                  <Label htmlFor="destination">Destination Address</Label>
+                  <Input
+                    id="destination"
+                    value={destinationAddress}
+                    onChange={(e) => setDestinationAddress(e.target.value)}
+                    placeholder="Enter destination or click on map"
+                  />
                 </div>
-                <div>
-                  <span className="font-medium">To:</span>
-                  <p className="text-sm text-gray-600">{currentRide.destination_address}</p>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-medium">Estimated Fare:</span>
-                  <span>${(currentRide.estimated_fare / 100).toFixed(2)}</span>
-                </div>
-                {currentRide.driver && (
-                  <div>
-                    <span className="font-medium">Driver:</span>
-                    <p className="text-sm text-gray-600">
-                      {currentRide.driver.first_name} {currentRide.driver.last_name}
-                    </p>
-                  </div>
-                )}
                 
-                {/* Payment button for awaiting_payment status */}
-                {currentRide.status === 'awaiting_payment' && (
-                  <Button 
-                    onClick={() => handlePayNow(currentRide)}
-                    className="w-full mt-4"
-                  >
-                    Pay Now - ${(currentRide.estimated_fare / 100).toFixed(2)}
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Ride History */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Ride History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {rides.length === 0 ? (
-              <p className="text-gray-500">No rides yet</p>
-            ) : (
-              <div className="space-y-3">
-                {rides.map((ride) => (
-                  <div key={ride.id} className="p-3 border rounded-lg">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge className={getStatusColor(ride.status)}>
-                            {getStatusText(ride.status)}
-                          </Badge>
-                          <span className="text-sm text-gray-500">
-                            {new Date(ride.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="text-sm">
-                          <span className="font-medium">From:</span> {ride.pickup_address}
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">To:</span> {ride.destination_address}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">
-                          ${((ride.final_fare || ride.estimated_fare) / 100).toFixed(2)}
-                        </p>
-                        {ride.driver && (
-                          <p className="text-sm text-gray-600">
-                            {ride.driver.first_name} {ride.driver.last_name}
-                          </p>
-                        )}
-                        
-                        {/* Pay button for unpaid rides */}
-                        {ride.status === 'awaiting_payment' && ride.payment_status === 'pending' && (
-                          <Button 
-                            size="sm" 
-                            onClick={() => handlePayNow(ride)}
-                            className="mt-2"
-                          >
-                            Pay Now
-                          </Button>
-                        )}
-                      </div>
+                {/* Map */}
+                <div className="h-64">
+                  {isMapReady ? (
+                    <MapWrapper
+                      center={mapCenter}
+                      markers={mapMarkers}
+                      onMapClick={handleMapClick}
+                      className="h-full w-full"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-gray-200 animate-pulse rounded-lg flex items-center justify-center">
+                      <div className="text-gray-500">Loading map...</div>
                     </div>
+                  )}
+                </div>
+                
+                <p className="text-sm text-gray-600">
+                  Click on the map to set pickup and destination locations
+                </p>
+                
+                <Button
+                  onClick={handleRequestRide}
+                  disabled={isLoading || !pickupCoords || !destinationCoords}
+                  className="w-full"
+                >
+                  {isLoading ? 'Requesting...' : 'Request Ride'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Current Ride */}
+            {currentRide && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Current Ride</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Status:</span>
+                      <Badge className={getStatusColor(currentRide.status)}>
+                        {getStatusText(currentRide.status)}
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="font-medium">From:</span>
+                      <p className="text-sm text-gray-600">{currentRide.pickup_address}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">To:</span>
+                      <p className="text-sm text-gray-600">{currentRide.destination_address}</p>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Estimated Fare:</span>
+                      <span>${(currentRide.estimated_fare / 100).toFixed(2)}</span>
+                    </div>
+                    {currentRide.driver && (
+                      <div>
+                        <span className="font-medium">Driver:</span>
+                        <p className="text-sm text-gray-600">
+                          {currentRide.driver.first_name} {currentRide.driver.last_name}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {currentRide.status === 'awaiting_payment' && (
+                      <Button 
+                        onClick={() => handlePayNow(currentRide)}
+                        className="w-full mt-4"
+                      >
+                        Pay Now - ${(currentRide.estimated_fare / 100).toFixed(2)}
+                      </Button>
+                    )}
                   </div>
-                ))}
-              </div>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
-      </div>
+
+            {/* Ride History */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Ride History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {rides.length === 0 ? (
+                  <p className="text-gray-500">No rides yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {rides.map((ride) => (
+                      <div key={ride.id} className="p-3 border rounded-lg">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className={getStatusColor(ride.status)}>
+                                {getStatusText(ride.status)}
+                              </Badge>
+                              <span className="text-sm text-gray-500">
+                                {new Date(ride.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-sm">
+                              <span className="font-medium">From:</span> {ride.pickup_address}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">To:</span> {ride.destination_address}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium">
+                              ${((ride.final_fare || ride.estimated_fare) / 100).toFixed(2)}
+                            </p>
+                            {ride.driver && (
+                              <p className="text-sm text-gray-600">
+                                {ride.driver.first_name} {ride.driver.last_name}
+                              </p>
+                            )}
+                            
+                            {ride.status === 'awaiting_payment' && ride.payment_status === 'pending' && (
+                              <Button 
+                                size="sm" 
+                                onClick={() => handlePayNow(ride)}
+                                className="mt-2"
+                              >
+                                Pay Now
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="profile">
+          <ProfileSettings />
+        </TabsContent>
+      </Tabs>
 
       {/* Payment Modal */}
       {rideForPayment && (

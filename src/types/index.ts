@@ -22,7 +22,7 @@ export interface Ride {
   destination_longitude: number;
   destination_address: string;
   ride_type: string;
-  status: 'requested' | 'accepted' | 'picked_up' | 'in_progress' | 'completed' | 'awaiting_payment' | 'cancelled';
+  status: 'requested' | 'accepted' | 'picked_up' | 'in_progress' | 'completed' | 'awaiting_payment' |'cancelled';
   estimated_fare: number;
   final_fare?: number;
   payment_status: 'pending' | 'paid' | 'failed';
@@ -40,3 +40,4 @@ export interface CreateRideRequest {
   destinationAddress: string;
   rideType?: string;
 }
+
