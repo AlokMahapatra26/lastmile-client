@@ -231,7 +231,9 @@ export default function RiderDashboard() {
       <Tabs defaultValue="rides" className="space-y-4">
         <TabsList>
           <TabsTrigger value="rides">My Rides</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          
         </TabsList>
 
         <TabsContent value="rides">
@@ -366,7 +368,12 @@ export default function RiderDashboard() {
               </Card>
             )}
 
-            {/* Ride History */}
+           
+          </div>
+        </TabsContent>
+
+        <TabsContent value='history'>
+           {/* Ride History */}
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Ride History</CardTitle>
@@ -422,7 +429,6 @@ export default function RiderDashboard() {
                 )}
               </CardContent>
             </Card>
-          </div>
         </TabsContent>
 
         <TabsContent value="profile">
