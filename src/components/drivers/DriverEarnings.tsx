@@ -68,7 +68,7 @@ export default function DriverEarnings() {
   };
 
   const formatCurrency = (cents: number) => {
-    return `$${(cents / 100).toFixed(2)}`;
+    return `${(cents / 100).toFixed(2)}`;
   };
 
   if (isLoading) {

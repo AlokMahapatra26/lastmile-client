@@ -28,9 +28,7 @@ export function calculateDistance(
   return distance; // Distance in kilometers
 }
 
-/**
- * Format distance for display
- */
+
 export function formatDistance(distanceKm: number): string {
   if (distanceKm < 1) {
     return `${Math.round(distanceKm * 1000)}m`;
@@ -38,10 +36,7 @@ export function formatDistance(distanceKm: number): string {
   return `${distanceKm.toFixed(1)}km`;
 }
 
-/**
- * Estimate travel time (rough calculation)
- * Assumes average city driving speed of 30 km/h
- */
+
 export function estimateTravelTime(distanceKm: number): string {
   const avgSpeedKmh = 30; // Average city speed
   const timeHours = distanceKm / avgSpeedKmh;
