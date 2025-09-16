@@ -72,3 +72,36 @@ export async function declineRide(
     );
   }
 }
+
+
+/**
+ * Submit rating and review for a ride
+ */
+export async function submitRating(
+  rideId: string, 
+  rating: number | null, 
+  review: string = ''
+): Promise<any> {
+  try {
+    const response = await api.post(`/api/rides/${rideId}/rate`, {
+      rating,
+      review
+    });
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.error || 'Failed to submit rating');
+  }
+}
+
+/**
+ * Get ratings for a ride
+ */
+export async function getRideRatings(rideId: string): Promise<any> {
+  try {
+    const response = await api.get(`/api/rides/${rideId}/ratings`);
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.error || 'Failed to get ratings');
+  }
+}
+

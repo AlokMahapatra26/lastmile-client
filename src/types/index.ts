@@ -9,6 +9,8 @@ export interface User {
   current_longitude?: number;
   is_active: boolean;
   created_at: string;
+  average_rating: number;
+  total_ratings: number;
 }
 
 export interface Ride {
@@ -21,18 +23,46 @@ export interface Ride {
   destination_latitude: number;
   destination_longitude: number;
   destination_address: string;
-  ride_type: string;
-  status: 'requested' | 'accepted' | 'picked_up' | 'in_progress' | 'completed' | 'awaiting_payment' |'cancelled';
+  status: string;
   estimated_fare: number;
   final_fare?: number;
-  payment_status: 'pending' | 'paid' | 'failed';
+  payment_status: string;
+  payment_intent_id?: string;
+  ride_type: string;
   created_at: string;
-  rider?: User;
-  driver?: User;
+  updated_at: string;
+  paid_at?: string;
+  
+  // NEW: Add these optional rating fields
+  rated_by_rider?: boolean;
+  rated_by_driver?: boolean;
+  rider_rating?: number;
+  driver_rating?: number;
+  rider_review?: string;
+  driver_review?: string;
+  
+  // NEW: Add these optional cancellation fields
   cancelled_by?: string;
   cancellation_reason?: string;
   cancelled_at?: string;
+  
+  // Relations (if you have them)
+  rider?: {
+    first_name: string;
+    last_name: string;
+    phone_number: string;
+    average_rating?: number;
+    total_ratings?: number;
+  };
+  driver?: {
+    first_name: string;
+    last_name: string;
+    phone_number: string;
+    average_rating?: number;
+    total_ratings?: number;
+  };
 }
+
 
 export interface CreateRideRequest {
   pickupLatitude: number;
@@ -44,3 +74,13 @@ export interface CreateRideRequest {
   rideType?: string;
 }
 
+export interface Rating {
+  id: string;
+  ride_id: string;
+  rating: number | null;
+  review: string | null;
+  rated_by: string;
+  rated_user: string;
+  created_at: string;
+  updated_at: string;
+}

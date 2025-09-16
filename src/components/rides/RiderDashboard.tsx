@@ -17,8 +17,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ProfileSettings from '@/components/profile/ProfileSettings';
 import { calculateDistance, formatDistance, estimateTravelTime } from '@/utils/distance';
 import { formatRupees } from '@/utils/currency';
-import { cancelRide } from '@/lib/rideActions'; // Added import for cancellation
+import { cancelRide, submitRating } from '@/lib/rideActions';
+import { RatingModal } from '@/components/rides/RatingModal';
+import api from '@/lib/api';
 
+// Helper to track already rated rides in localStorage
+const getRatedRides = (): string[] => {
+  if (typeof window !== 'undefined') {
+    const rated = localStorage.getItem('rider-rated-rides');
+    return rated ? JSON.parse(rated) : [];
+  }
+  return [];
+};
+
+const markRideAsRated = (rideId: string) => {
+  if (typeof window !== 'undefined') {
+    const ratedRides = getRatedRides();
+    if (!ratedRides.includes(rideId)) {
+      ratedRides.push(rideId);
+      localStorage.setItem('rider-rated-rides', JSON.stringify(ratedRides));
+    }
+  }
+};
 
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
@@ -30,11 +50,18 @@ export default function RiderDashboard() {
   const [destinationCoords, setDestinationCoords] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([20.2961, 85.8245]);
   const [isMapReady, setIsMapReady] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false); // State for cancellation action
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [rideForPayment, setRideForPayment] = useState<any>(null);
+
+  // Rating modal state
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [rideToRate, setRideToRate] = useState<any>(null);
+  const [completedRides, setCompletedRides] = useState<any[]>([]);
+  const [ratedRides, setRatedRides] = useState<string[]>([]);
   
   const { address: pickupDisplayAddress } = useShortAddress(
     pickupCoords?.[0],
@@ -49,7 +76,90 @@ export default function RiderDashboard() {
     ? calculateDistance(pickupCoords, destinationCoords)
     : null;
 
-  // New function to handle ride cancellation
+  // Initialize component and load data
+  useEffect(() => {
+    const initialize = async () => {
+      try {
+        setRatedRides(getRatedRides());
+        await getMyRides();
+        await fetchCompletedRides();
+        setIsInitialized(true);
+      } catch (error) {
+        setIsInitialized(true);
+      }
+    };
+
+    initialize();
+  }, [getMyRides]);
+
+  // Fetch completed rides specifically for rating check
+  const fetchCompletedRides = async () => {
+    try {
+      const response = await api.get('/api/rides/my-rides');
+      const allRides = response.data.rides || [];
+      const completed = allRides.filter((ride: any) => ride.status === 'completed');
+      setCompletedRides(completed);
+    } catch (error) {
+      console.error('Failed to fetch completed rides:', error);
+    }
+  };
+
+  // Check for unrated completed rides
+  useEffect(() => {
+    if (completedRides.length > 0 && !showRatingModal && isInitialized) {
+      const unratedRide = completedRides.find(ride => {
+        const isCompleted = ride.status === 'completed';
+        const isPaid = ride.payment_status === 'paid';
+        const notRatedInLocalStorage = !ratedRides.includes(ride.id);
+        const notRatedInDatabase = !ride.rated_by_rider;
+        
+        return isCompleted && isPaid && notRatedInLocalStorage && notRatedInDatabase;
+      });
+      
+      if (unratedRide) {
+        setRideToRate(unratedRide);
+        setShowRatingModal(true);
+      }
+    }
+  }, [completedRides, showRatingModal, isInitialized, ratedRides]);
+
+  // Handle rating submission
+  const handleRatingSubmit = async (rating: number | null, review: string) => {
+    if (!rideToRate) return;
+
+    try {
+      await submitRating(rideToRate.id, rating || 0, review);
+      
+      // Mark ride as rated locally to prevent re-showing
+      markRideAsRated(rideToRate.id);
+      setRatedRides(prev => [...prev, rideToRate.id]);
+      
+      // Close modal and clear state
+      setShowRatingModal(false);
+      setRideToRate(null);
+      
+      toast.success('Thank you for your feedback!');
+      
+      // Refresh data
+      await fetchCompletedRides();
+      await getMyRides();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to submit rating');
+    }
+  };
+
+  // Handle modal close
+  const handleCloseRatingModal = () => {
+    if (rideToRate) {
+      // Mark as rated even if closed without rating to prevent re-showing
+      markRideAsRated(rideToRate.id);
+      setRatedRides(prev => [...prev, rideToRate.id]);
+    }
+    
+    setShowRatingModal(false);
+    setRideToRate(null);
+  };
+
   const handleCancelRide = async (ride: any, reason: string = '') => {
     if (!confirm('Are you sure you want to cancel this ride?')) {
       return;
@@ -59,7 +169,7 @@ export default function RiderDashboard() {
     try {
       await cancelRide(ride.id, reason);
       toast.success('Ride cancelled successfully');
-      await getMyRides(); // Refresh rides data
+      await getMyRides();
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -67,7 +177,6 @@ export default function RiderDashboard() {
     }
   };
 
-  // New helper to check if a ride can be cancelled
   const canCancelRide = (ride: any) => {
     return ['requested'].includes(ride.status);
   };
@@ -75,9 +184,15 @@ export default function RiderDashboard() {
   const handlePaymentSuccess = async () => {
     try {
       await getMyRides();
+      await fetchCompletedRides(); // This will trigger rating modal check
       setShowPaymentModal(false);
       setRideForPayment(null);
       toast.success('Payment completed successfully!');
+      
+      // Small delay to ensure data is refreshed before checking for rating
+      setTimeout(async () => {
+        await fetchCompletedRides();
+      }, 1000);
     } catch (error) {
       toast.error('Payment succeeded but failed to refresh ride data');
       setShowPaymentModal(false);
@@ -110,8 +225,7 @@ export default function RiderDashboard() {
         }
       );
     }
-    getMyRides().catch((error) => toast.error(error.message));
-  }, [getMyRides, isMapReady]);
+  }, [isMapReady]);
 
   useEffect(() => {
     if (pickupDisplayAddress) setPickupAddress(pickupDisplayAddress);
@@ -274,7 +388,6 @@ export default function RiderDashboard() {
                       <div><span className="font-medium">Driver:</span><p className="text-sm text-gray-600">{currentRide.driver.first_name} {currentRide.driver.last_name}</p></div>
                     )}
                     
-                    {/* Action buttons container */}
                     <div className="flex gap-2 mt-4">
                       {canCancelRide(currentRide) && (
                         <Button
@@ -300,68 +413,108 @@ export default function RiderDashboard() {
         </TabsContent>
 
         <TabsContent value='history'>
-            <Card className="lg:col-span-2">
-              <CardHeader><CardTitle>Ride History</CardTitle></CardHeader>
-              <CardContent>
-                {rides.length === 0 ? (<p className="text-gray-500">No rides yet</p>) : (
-                  <div className="space-y-3">
-                    {rides.map((ride) => (
-                      <div key={ride.id} className="p-3 border rounded-lg">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge className={getStatusColor(ride.status)}>{getStatusText(ride.status)}</Badge>
-                              <span className="text-sm text-gray-500">{new Date(ride.created_at).toLocaleDateString()}</span>
-                            </div>
-                            {/* Display cancellation info if ride was cancelled */}
-                            {ride.status === 'cancelled' && (
-                              <p className="text-xs text-red-600 mb-1">
-                                Cancelled by {ride.cancelled_by}
-                                {ride.cancellation_reason && `: ${ride.cancellation_reason}`}
-                              </p>
-                            )}
-                            <p className="text-sm"><span className="font-medium">From:</span> {ride.pickup_address}</p>
-                            <p className="text-sm"><span className="font-medium">To:</span> {ride.destination_address}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-medium">{formatRupees(ride.final_fare || ride.estimated_fare)}</p>
-                            {ride.driver && <p className="text-sm text-gray-600">{ride.driver.first_name}</p>}
-                            
-                            {/* Add cancel button for pending rides in history */}
-                            {canCancelRide(ride) && (
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleCancelRide(ride)}
-                                className="mt-2"
-                                disabled={isLoading || isCancelling}
-                              >
-                                {isCancelling ? '...' : 'Cancel'}
-                              </Button>
-                            )}
-                            
-                            {ride.status === 'awaiting_payment' && (
-                              <Button size="sm" onClick={() => handlePayNow(ride)} className="mt-2">Pay Now</Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+  <Card className="lg:col-span-2">
+    <CardHeader><CardTitle>Ride History</CardTitle></CardHeader>
+    <CardContent>
+      {rides.length === 0 ? (<p className="text-gray-500">No rides yet</p>) : (
+        <div className="space-y-3">
+          {rides.map((ride) => (
+            <div key={ride.id} className="p-3 border rounded-lg">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge className={getStatusColor(ride.status)}>{getStatusText(ride.status)}</Badge>
+                    <span className="text-sm text-gray-500">{new Date(ride.created_at).toLocaleDateString()}</span>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-        </TabsContent>
+                  
+                  {ride.status === 'cancelled' && (
+                    <p className="text-xs text-red-600 mb-1">
+                      Cancelled by {ride.cancelled_by}
+                      {ride.cancellation_reason && `: ${ride.cancellation_reason}`}
+                    </p>
+                  )}
+
+                  {ride.status === 'completed' && ratedRides.includes(ride.id) && (
+                    <p className="text-xs text-green-600 mb-1">
+                      ⭐ You rated this ride
+                    </p>
+                  )}
+                  
+                  <p className="text-sm"><span className="font-medium">From:</span> {ride.pickup_address}</p>
+                  <p className="text-sm"><span className="font-medium">To:</span> {ride.destination_address}</p>
+                </div>
+                
+                <div className="text-right">
+                  <p className="font-medium">{formatRupees(ride.final_fare || ride.estimated_fare)}</p>
+                  {ride.driver && <p className="text-sm text-gray-600">{ride.driver.first_name}</p>}
+                  
+                  {/* Cancel button for pending rides */}
+                  {canCancelRide(ride) && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleCancelRide(ride)}
+                      className="mt-2"
+                      disabled={isLoading || isCancelling}
+                    >
+                      {isCancelling ? '...' : 'Cancel'}
+                    </Button>
+                  )}
+                  
+                  {/* Pay button for awaiting payment */}
+                  {ride.status === 'awaiting_payment' && (
+                    <Button size="sm" onClick={() => handlePayNow(ride)} className="mt-2">
+                      Pay Now
+                    </Button>
+                  )}
+
+                  {/* Rate button for completed rides */}
+                  {ride.status === 'completed' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setRideToRate(ride);
+                        setShowRatingModal(true);
+                      }}
+                      className="mt-2"
+                      disabled={ratedRides.includes(ride.id)}
+                    >
+                      {ratedRides.includes(ride.id) ? 'Rated' : 'Rate'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </CardContent>
+  </Card>
+</TabsContent>
+
 
         <TabsContent value="profile"><ProfileSettings /></TabsContent>
       </Tabs>
 
+      {/* Payment Modal */}
       {rideForPayment && (
         <PaymentModal
           ride={rideForPayment}
           isOpen={showPaymentModal}
           onClose={() => {setShowPaymentModal(false); setRideForPayment(null);}}
           onPaymentSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {/* Rating Modal */}
+      {showRatingModal && rideToRate && (
+        <RatingModal
+          isOpen={showRatingModal}
+          onClose={handleCloseRatingModal}
+          onSubmit={handleRatingSubmit}
+          ride={rideToRate}
+          userType="rider"
         />
       )}
     </div>
