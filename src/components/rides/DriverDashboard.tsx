@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import api from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DriverEarnings from '../drivers/DriverEarnings';
-import ProfileSettings from '@/components/profile/ProfileSettings'; // Merged import
+import ProfileSettings from '@/components/profile/ProfileSettings';
+import { AddressDisplay } from '@/components/ui/AddressDisplay'; // New import
 
 // Helper function to get initial online status from localStorage
 const getInitialOnlineStatus = () => {
@@ -68,7 +69,7 @@ export default function DriverDashboard() {
     };
 
     initializeRides();
-  }, []);
+  }, [initializeDriverRides]);
 
   useEffect(() => {
     // Only start polling if online and initialized
@@ -218,7 +219,6 @@ export default function DriverDashboard() {
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">Driver Dashboard</h1>
@@ -243,7 +243,6 @@ export default function DriverDashboard() {
         </div>
       </div>
 
-      {/* Tabs for Rides, Earnings, and Profile */}
       <Tabs defaultValue="rides" className="space-y-4">
         <TabsList>
           <TabsTrigger value="rides">Rides</TabsTrigger>
@@ -251,7 +250,6 @@ export default function DriverDashboard() {
           <TabsTrigger value="profile">Profile</TabsTrigger> 
         </TabsList>
 
-        {/* Rides Tab Content */}
         <TabsContent value="rides">
           {currentRide && ['accepted', 'picked_up', 'in_progress'].includes(currentRide.status) && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -300,12 +298,20 @@ export default function DriverDashboard() {
                         </p>
                       </div>
                       <div>
-                        <span className="font-medium">Pickup:</span>
-                        <p className="text-sm text-gray-600">{currentRide.pickup_address}</p>
+                        <span className="font-medium">Pickup: </span>
+                        <AddressDisplay
+                          lat={currentRide.pickup_latitude}
+                          lng={currentRide.pickup_longitude}
+                          fallback={currentRide.pickup_address}
+                        />
                       </div>
                       <div>
-                        <span className="font-medium">Destination:</span>
-                        <p className="text-sm text-gray-600">{currentRide.destination_address}</p>
+                        <span className="font-medium">Destination: </span>
+                        <AddressDisplay
+                          lat={currentRide.destination_latitude}
+                          lng={currentRide.destination_longitude}
+                          fallback={currentRide.destination_address}
+                        />
                       </div>
                       <div className="flex justify-between">
                         <span className="font-medium">Gross Fare:</span>
@@ -358,12 +364,22 @@ export default function DriverDashboard() {
                               </Button>
                             </div>
                             <div className="space-y-1 text-sm">
-                              <p>
-                                <span className="font-medium">From:</span> {ride.pickup_address}
-                              </p>
-                              <p>
-                                <span className="font-medium">To:</span> {ride.destination_address}
-                              </p>
+                              <div>
+                                <span className="font-medium">From: </span>
+                                <AddressDisplay
+                                  lat={ride.pickup_latitude}
+                                  lng={ride.pickup_longitude}
+                                  fallback={ride.pickup_address}
+                                />
+                              </div>
+                              <div>
+                                <span className="font-medium">To: </span>
+                                <AddressDisplay
+                                  lat={ride.destination_latitude}
+                                  lng={ride.destination_longitude}
+                                  fallback={ride.destination_address}
+                                />
+                              </div>
                               <p className="text-gray-500">
                                 Requested {new Date(ride.created_at).toLocaleTimeString()}
                               </p>
@@ -379,12 +395,10 @@ export default function DriverDashboard() {
           )}
         </TabsContent>
 
-        {/* Earnings Tab Content */}
         <TabsContent value="earnings">
           <DriverEarnings />
         </TabsContent>
         
-        {/* Profile Tab Content */}
         <TabsContent value="profile">
           <ProfileSettings />
         </TabsContent>

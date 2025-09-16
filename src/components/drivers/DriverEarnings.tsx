@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, TrendingUp, DollarSign, Car } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { AddressDisplay } from '../ui/AddressDisplay';
 
 interface DriverStats {
   totalStats: {
@@ -288,35 +289,50 @@ export default function DriverEarnings() {
         <CardHeader>
           <CardTitle className="text-lg">Recent Rides</CardTitle>
         </CardHeader>
-        <CardContent>
-          {stats.recentRides.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No rides found</p>
-          ) : (
-            <div className="space-y-3">
-              {stats.recentRides.map((ride) => (
-                <div key={ride.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">
-                      {ride.pickup_address} → {ride.destination_address}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(ride.created_at).toLocaleDateString()} at{' '}
-                      {new Date(ride.created_at).toLocaleTimeString()}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-500">
-                      Gross: {formatCurrency(ride.final_fare || ride.estimated_fare)}
-                    </p>
-                    <p className="font-semibold text-green-600">
-                      You earned: {formatCurrency(Math.round((ride.final_fare || ride.estimated_fare) * 0.8))}
-                    </p>
-                  </div>
-                </div>
-              ))}
+       <CardContent>
+  {stats.recentRides.length === 0 ? (
+    <p className="text-gray-500 text-center py-4">No rides found</p>
+  ) : (
+    <div className="space-y-3">
+      {stats.recentRides.map((ride) => (
+        <div key={ride.id} className="flex items-center justify-between p-3 border rounded-lg">
+          <div className="flex-1">
+            <div className="text-sm">
+              <span className="font-medium">From: </span>
+              <AddressDisplay 
+                lat={ride.pickup_latitude} 
+                lng={ride.pickup_longitude}
+                fallback={ride.pickup_address}
+                className="inline"
+              />
             </div>
-          )}
-        </CardContent>
+            <div className="text-sm">
+              <span className="font-medium">To: </span>
+              <AddressDisplay 
+                lat={ride.destination_latitude} 
+                lng={ride.destination_longitude}
+                fallback={ride.destination_address}
+                className="inline"
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              {new Date(ride.created_at).toLocaleDateString()} at{' '}
+              {new Date(ride.created_at).toLocaleTimeString()}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">
+              Gross: ${((ride.final_fare || ride.estimated_fare) / 100).toFixed(2)}
+            </p>
+            <p className="font-semibold text-green-600">
+              You earned: ${ (Math.round((ride.final_fare || ride.estimated_fare) * 0.8) / 100).toFixed(2) }
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</CardContent>
       </Card>
     </div>
   );

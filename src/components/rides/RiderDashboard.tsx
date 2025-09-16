@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useShortAddress } from '@/hooks/useAddress'; // New import
 import { useAuthStore } from '@/store/auth';
 import { useRideStore } from '@/store/rides';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,16 @@ export default function RiderDashboard() {
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [rideForPayment, setRideForPayment] = useState<any>(null);
+  
+  // NEW: Get addresses for pickup and destination coordinates
+  const { address: pickupDisplayAddress } = useShortAddress(
+    pickupCoords?.[0],
+    pickupCoords?.[1]
+  );
+  const { address: destinationDisplayAddress } = useShortAddress(
+    destinationCoords?.[0],
+    destinationCoords?.[1]
+  );
 
   // Calculate distance when both coordinates are available
   const distance = pickupCoords && destinationCoords 
@@ -40,25 +51,14 @@ export default function RiderDashboard() {
   const handlePaymentSuccess = async () => {
     try {
       console.log('Payment successful, refreshing rides...');
-      
-      // 1. Refresh ride data from backend
       await getMyRides();
-      
-      // 2. Close the payment modal
       setShowPaymentModal(false);
-      
-      // 3. Clear the ride for payment
       setRideForPayment(null);
-      
-      // 4. Show success message
       toast.success('Payment completed successfully!');
-      
       console.log('Payment success: rides refreshed and modal closed');
     } catch (error) {
       console.error('Failed to refresh rides after payment:', error);
       toast.error('Payment succeeded but failed to refresh ride data');
-      
-      // Still close the modal even if refresh fails
       setShowPaymentModal(false);
       setRideForPayment(null);
     }
@@ -87,6 +87,7 @@ export default function RiderDashboard() {
           const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
           setMapCenter(coords);
           setPickupCoords(coords);
+          setPickupAddress('Getting address...'); // Let hook fetch address
         },
         (error) => {
           console.error('Error getting location:', error);
@@ -109,25 +110,35 @@ export default function RiderDashboard() {
       payment_status: ride.payment_status
     })));
   }, [rides]);
+  
+  // NEW: Update pickup address when coordinates change
+  useEffect(() => {
+    if (pickupDisplayAddress) {
+      setPickupAddress(pickupDisplayAddress);
+    }
+  }, [pickupDisplayAddress]);
+
+  // NEW: Update destination address when coordinates change
+  useEffect(() => {
+    if (destinationDisplayAddress) {
+      setDestinationAddress(destinationDisplayAddress);
+    }
+  }, [destinationDisplayAddress]);
+
 
   // Updated useEffect for payment modal - check for rides needing payment
   useEffect(() => {
     console.log('Checking rides for payment requirements. Total rides:', rides.length);
-    
-    // Find rides that need payment
     const awaitingPaymentRide = rides.find(ride => 
       ride.status === 'awaiting_payment' && 
       ride.payment_status === 'pending'
     );
-    
     console.log('Awaiting payment ride found:', awaitingPaymentRide?.id || 'none');
-    
     if (awaitingPaymentRide && !showPaymentModal) {
       console.log('Showing payment modal for ride:', awaitingPaymentRide.id);
       setRideForPayment(awaitingPaymentRide);
       setShowPaymentModal(true);
     } else if (!awaitingPaymentRide && showPaymentModal && rideForPayment) {
-      // Close modal if no awaiting payment rides and modal is open
       console.log('No awaiting payment rides found, but modal is open. Checking if current ride is paid...');
       const currentRideStatus = rides.find(r => r.id === rideForPayment.id);
       if (currentRideStatus && (currentRideStatus.status === 'completed' || currentRideStatus.payment_status === 'paid')) {
@@ -138,19 +149,20 @@ export default function RiderDashboard() {
     }
   }, [rides, showPaymentModal, rideForPayment]);
 
+  // NEW: Updated handleMapClick to use address hook
   const handleMapClick = (lat: number, lng: number) => {
     if (!pickupCoords) {
       setPickupCoords([lat, lng]);
-      setPickupAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      setPickupAddress('Getting address...');
       toast.success('Pickup location set');
     } else if (!destinationCoords) {
       setDestinationCoords([lat, lng]);
-      setDestinationAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      setDestinationAddress('Getting address...');
       toast.success('Destination set');
     } else {
       setPickupCoords([lat, lng]);
       setDestinationCoords(null);
-      setPickupAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      setPickupAddress('Getting address...');
       setDestinationAddress('');
       toast.success('Pickup location updated');
     }
@@ -161,7 +173,6 @@ export default function RiderDashboard() {
       toast.error('Please set both pickup and destination locations');
       return;
     }
-
     const rideData: CreateRideRequest = {
       pickupLatitude: pickupCoords[0],
       pickupLongitude: pickupCoords[1],
@@ -171,7 +182,6 @@ export default function RiderDashboard() {
       destinationAddress,
       rideType: 'standard'
     };
-
     try {
       await createRide(rideData);
       toast.success('Ride requested successfully!');
@@ -217,15 +227,12 @@ export default function RiderDashboard() {
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">Welcome, {user?.first_name}!</h1>
           <p className="text-gray-600">Book your rides here</p>
         </div>
-        <Button variant="outline" onClick={logout}>
-          Logout
-        </Button>
+        <Button variant="outline" onClick={logout}>Logout</Button>
       </div>
 
       <Tabs defaultValue="rides" className="space-y-4">
@@ -233,12 +240,10 @@ export default function RiderDashboard() {
           <TabsTrigger value="rides">My Rides</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          
         </TabsList>
 
         <TabsContent value="rides">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Book a Ride */}
             <Card>
               <CardHeader>
                 <CardTitle>Book a Ride</CardTitle>
@@ -252,6 +257,12 @@ export default function RiderDashboard() {
                     onChange={(e) => setPickupAddress(e.target.value)}
                     placeholder="Enter pickup location or click on map"
                   />
+                  {/* NEW: Display coordinates */}
+                  {pickupCoords && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      📍 {pickupCoords[0].toFixed(6)}, {pickupCoords[1].toFixed(6)}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="destination">Destination Address</Label>
@@ -261,9 +272,14 @@ export default function RiderDashboard() {
                     onChange={(e) => setDestinationAddress(e.target.value)}
                     placeholder="Enter destination or click on map"
                   />
+                  {/* NEW: Display coordinates */}
+                  {destinationCoords && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      📍 {destinationCoords[0].toFixed(6)}, {destinationCoords[1].toFixed(6)}
+                    </p>
+                  )}
                 </div>
                 
-                {/* Distance and Time Display */}
                 {distance && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-center justify-between">
@@ -272,18 +288,13 @@ export default function RiderDashboard() {
                         <p className="text-xs text-blue-600">Estimated straight-line distance</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-bold text-blue-700">
-                          {formatDistance(distance)}
-                        </p>
-                        <p className="text-xs text-blue-600">
-                          ~{estimateTravelTime(distance)}
-                        </p>
+                        <p className="text-lg font-bold text-blue-700">{formatDistance(distance)}</p>
+                        <p className="text-xs text-blue-600">~{estimateTravelTime(distance)}</p>
                       </div>
                     </div>
                   </div>
                 )}
                 
-                {/* Map */}
                 <div className="h-64">
                   {isMapReady ? (
                     <MapWrapper
@@ -299,15 +310,6 @@ export default function RiderDashboard() {
                   )}
                 </div>
                 
-                <p className="text-sm text-gray-600">
-                  Click on the map to set pickup and destination locations
-                  {distance && (
-                    <span className="block mt-1 text-blue-600 font-medium">
-                      Distance: {formatDistance(distance)} • Est. time: {estimateTravelTime(distance)}
-                    </span>
-                  )}
-                </p>
-                
                 <Button
                   onClick={handleRequestRide}
                   disabled={isLoading || !pickupCoords || !destinationCoords}
@@ -320,7 +322,6 @@ export default function RiderDashboard() {
               </CardContent>
             </Card>
 
-            {/* Current Ride */}
             {currentRide && (
               <Card>
                 <CardHeader>
@@ -367,13 +368,10 @@ export default function RiderDashboard() {
                 </CardContent>
               </Card>
             )}
-
-           
           </div>
         </TabsContent>
 
         <TabsContent value='history'>
-           {/* Ride History */}
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Ride History</CardTitle>
@@ -436,7 +434,6 @@ export default function RiderDashboard() {
         </TabsContent>
       </Tabs>
 
-      {/* Payment Modal */}
       {rideForPayment && (
         <PaymentModal
           ride={rideForPayment}
