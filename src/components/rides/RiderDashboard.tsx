@@ -20,7 +20,7 @@ import { formatRupees } from '@/utils/currency';
 import { cancelRide, submitRating } from '@/lib/rideActions';
 import { RatingModal } from '@/components/rides/RatingModal';
 import api from '@/lib/api';
-
+import jsPDF from 'jspdf';
 // Helper to track already rated rides in localStorage
 const getRatedRides = (): string[] => {
   if (typeof window !== 'undefined') {
@@ -43,7 +43,7 @@ const markRideAsRated = (rideId: string) => {
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
   const { rides, currentRide, createRide, getMyRides, isLoading } = useRideStore();
-  
+
   const [pickupAddress, setPickupAddress] = useState('');
   const [destinationAddress, setDestinationAddress] = useState('');
   const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
@@ -52,7 +52,7 @@ export default function RiderDashboard() {
   const [isMapReady, setIsMapReady] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  
+
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [rideForPayment, setRideForPayment] = useState<any>(null);
@@ -62,7 +62,7 @@ export default function RiderDashboard() {
   const [rideToRate, setRideToRate] = useState<any>(null);
   const [completedRides, setCompletedRides] = useState<any[]>([]);
   const [ratedRides, setRatedRides] = useState<string[]>([]);
-  
+
   const { address: pickupDisplayAddress } = useShortAddress(
     pickupCoords?.[0],
     pickupCoords?.[1]
@@ -72,7 +72,7 @@ export default function RiderDashboard() {
     destinationCoords?.[1]
   );
 
-  const distance = pickupCoords && destinationCoords 
+  const distance = pickupCoords && destinationCoords
     ? calculateDistance(pickupCoords, destinationCoords)
     : null;
 
@@ -112,10 +112,10 @@ export default function RiderDashboard() {
         const isPaid = ride.payment_status === 'paid';
         const notRatedInLocalStorage = !ratedRides.includes(ride.id);
         const notRatedInDatabase = !ride.rated_by_rider;
-        
+
         return isCompleted && isPaid && notRatedInLocalStorage && notRatedInDatabase;
       });
-      
+
       if (unratedRide) {
         setRideToRate(unratedRide);
         setShowRatingModal(true);
@@ -129,17 +129,17 @@ export default function RiderDashboard() {
 
     try {
       await submitRating(rideToRate.id, rating || 0, review);
-      
+
       // Mark ride as rated locally to prevent re-showing
       markRideAsRated(rideToRate.id);
       setRatedRides(prev => [...prev, rideToRate.id]);
-      
+
       // Close modal and clear state
       setShowRatingModal(false);
       setRideToRate(null);
-      
+
       toast.success('Thank you for your feedback!');
-      
+
       // Refresh data
       await fetchCompletedRides();
       await getMyRides();
@@ -155,7 +155,7 @@ export default function RiderDashboard() {
       markRideAsRated(rideToRate.id);
       setRatedRides(prev => [...prev, rideToRate.id]);
     }
-    
+
     setShowRatingModal(false);
     setRideToRate(null);
   };
@@ -188,7 +188,7 @@ export default function RiderDashboard() {
       setShowPaymentModal(false);
       setRideForPayment(null);
       toast.success('Payment completed successfully!');
-      
+
       // Small delay to ensure data is refreshed before checking for rating
       setTimeout(async () => {
         await fetchCompletedRides();
@@ -300,6 +300,48 @@ export default function RiderDashboard() {
     }
   };
 
+
+  
+
+// Add this function inside your RiderDashboard component
+const handleDownloadReceipt = (ride: any) => {
+  // Create a new PDF document
+  const pdf = new jsPDF();
+  
+  // Add content to PDF
+  pdf.setFontSize(20);
+  pdf.text('RIDE RECEIPT', 20, 30);
+  
+  pdf.setFontSize(12);
+  pdf.text(`Receipt ID: ${ride.id}`, 20, 50);
+  pdf.text(`Date: ${new Date(ride.created_at).toLocaleDateString()}`, 20, 65);
+  pdf.text(`Time: ${new Date(ride.created_at).toLocaleTimeString()}`, 20, 80);
+  
+  pdf.text('TRIP DETAILS:', 20, 100);
+  pdf.text(`From: ${ride.pickup_address}`, 20, 115);
+  pdf.text(`To: ${ride.destination_address}`, 20, 130);
+  
+  if (ride.driver) {
+    pdf.text(`Driver: ${ride.driver.first_name} ${ride.driver.last_name}`, 20, 145);
+  }
+  
+  pdf.text('PAYMENT:', 20, 165);
+  pdf.text(`Fare: ${formatRupees(ride.final_fare || ride.estimated_fare)}`, 20, 180);
+  pdf.text(`Status: ${ride.payment_status || 'Paid'}`, 20, 195);
+  
+  // Add a footer
+  pdf.setFontSize(10);
+  pdf.text('Thank you for riding with us!', 20, 250);
+  pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 265);
+  
+  // Save the PDF
+  pdf.save(`receipt-${ride.id}.pdf`);
+  
+  // Show success message
+  toast.success('Receipt downloaded successfully!');
+};
+
+
   const getStatusText = (status: string) => {
     return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
@@ -333,7 +375,7 @@ export default function RiderDashboard() {
                 <CardTitle>Book a Ride</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                 <div>
+                <div>
                   <Label htmlFor="pickup">Pickup Address</Label>
                   <Input id="pickup" value={pickupAddress} onChange={(e) => setPickupAddress(e.target.value)} placeholder="Enter pickup location or click on map" />
                   {pickupCoords && <p className="text-xs text-gray-500 mt-1">📍 {pickupCoords[0].toFixed(6)}, {pickupCoords[1].toFixed(6)}</p>}
@@ -387,7 +429,7 @@ export default function RiderDashboard() {
                     {currentRide.driver && (
                       <div><span className="font-medium">Driver:</span><p className="text-sm text-gray-600">{currentRide.driver.first_name} {currentRide.driver.last_name}</p></div>
                     )}
-                    
+
                     <div className="flex gap-2 mt-4">
                       {canCancelRide(currentRide) && (
                         <Button
@@ -448,41 +490,53 @@ export default function RiderDashboard() {
                   <p className="font-medium">{formatRupees(ride.final_fare || ride.estimated_fare)}</p>
                   {ride.driver && <p className="text-sm text-gray-600">{ride.driver.first_name}</p>}
                   
-                  {/* Cancel button for pending rides */}
-                  {canCancelRide(ride) && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleCancelRide(ride)}
-                      className="mt-2"
-                      disabled={isLoading || isCancelling}
-                    >
-                      {isCancelling ? '...' : 'Cancel'}
-                    </Button>
-                  )}
-                  
-                  {/* Pay button for awaiting payment */}
-                  {ride.status === 'awaiting_payment' && (
-                    <Button size="sm" onClick={() => handlePayNow(ride)} className="mt-2">
-                      Pay Now
-                    </Button>
-                  )}
+                  <div className="flex flex-col gap-2 mt-2">
+                    {/* Cancel button for pending rides */}
+                    {canCancelRide(ride) && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleCancelRide(ride)}
+                        disabled={isLoading || isCancelling}
+                      >
+                        {isCancelling ? '...' : 'Cancel'}
+                      </Button>
+                    )}
+                    
+                    {/* Pay button for awaiting payment */}
+                    {ride.status === 'awaiting_payment' && (
+                      <Button size="sm" onClick={() => handlePayNow(ride)}>
+                        Pay Now
+                      </Button>
+                    )}
 
-                  {/* Rate button for completed rides */}
-                  {ride.status === 'completed' && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setRideToRate(ride);
-                        setShowRatingModal(true);
-                      }}
-                      className="mt-2"
-                      disabled={ratedRides.includes(ride.id)}
-                    >
-                      {ratedRides.includes(ride.id) ? 'Rated' : 'Rate'}
-                    </Button>
-                  )}
+                    {/* Rate button for completed rides */}
+                    {ride.status === 'completed' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setRideToRate(ride);
+                          setShowRatingModal(true);
+                        }}
+                        disabled={ratedRides.includes(ride.id)}
+                      >
+                        {ratedRides.includes(ride.id) ? 'Rated' : 'Rate'}
+                      </Button>
+                    )}
+
+                    {/* NEW: Download Receipt button for completed rides */}
+                    {ride.status === 'completed' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleDownloadReceipt(ride)}
+                        className="text-xs"
+                      >
+                        Receipt
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -494,6 +548,7 @@ export default function RiderDashboard() {
 </TabsContent>
 
 
+
         <TabsContent value="profile"><ProfileSettings /></TabsContent>
       </Tabs>
 
@@ -502,7 +557,7 @@ export default function RiderDashboard() {
         <PaymentModal
           ride={rideForPayment}
           isOpen={showPaymentModal}
-          onClose={() => {setShowPaymentModal(false); setRideForPayment(null);}}
+          onClose={() => { setShowPaymentModal(false); setRideForPayment(null); }}
           onPaymentSuccess={handlePaymentSuccess}
         />
       )}
