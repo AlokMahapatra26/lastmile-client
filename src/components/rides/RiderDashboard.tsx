@@ -16,7 +16,9 @@ import PaymentModal from '@/components/payments/PaymentModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ProfileSettings from '@/components/profile/ProfileSettings';
 import { calculateDistance, formatDistance, estimateTravelTime } from '@/utils/distance';
-import { formatRupees } from '@/utils/currency'; // New import
+import { formatRupees } from '@/utils/currency';
+import { cancelRide } from '@/lib/rideActions'; // Added import for cancellation
+
 
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
@@ -26,8 +28,9 @@ export default function RiderDashboard() {
   const [destinationAddress, setDestinationAddress] = useState('');
   const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<[number, number] | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>([20.2961, 85.8245]); // Centered on Vapi area
+  const [mapCenter, setMapCenter] = useState<[number, number]>([20.2961, 85.8245]);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false); // State for cancellation action
   
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -46,16 +49,36 @@ export default function RiderDashboard() {
     ? calculateDistance(pickupCoords, destinationCoords)
     : null;
 
+  // New function to handle ride cancellation
+  const handleCancelRide = async (ride: any, reason: string = '') => {
+    if (!confirm('Are you sure you want to cancel this ride?')) {
+      return;
+    }
+
+    setIsCancelling(true);
+    try {
+      await cancelRide(ride.id, reason);
+      toast.success('Ride cancelled successfully');
+      await getMyRides(); // Refresh rides data
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  // New helper to check if a ride can be cancelled
+  const canCancelRide = (ride: any) => {
+    return ['requested'].includes(ride.status);
+  };
+
   const handlePaymentSuccess = async () => {
     try {
-      console.log('Payment successful, refreshing rides...');
       await getMyRides();
       setShowPaymentModal(false);
       setRideForPayment(null);
       toast.success('Payment completed successfully!');
-      console.log('Payment success: rides refreshed and modal closed');
     } catch (error) {
-      console.error('Failed to refresh rides after payment:', error);
       toast.error('Payment succeeded but failed to refresh ride data');
       setShowPaymentModal(false);
       setRideForPayment(null);
@@ -63,15 +86,12 @@ export default function RiderDashboard() {
   };
 
   const handlePayNow = (ride: any) => {
-    console.log('Manual payment triggered for ride:', ride.id);
     setRideForPayment(ride);
     setShowPaymentModal(true);
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsMapReady(true);
-    }, 100);
+    const timer = setTimeout(() => setIsMapReady(true), 100);
     return () => clearTimeout(timer);
   }, []);
 
@@ -90,53 +110,24 @@ export default function RiderDashboard() {
         }
       );
     }
-
-    getMyRides().catch((error) => {
-      toast.error(error.message);
-    });
+    getMyRides().catch((error) => toast.error(error.message));
   }, [getMyRides, isMapReady]);
 
   useEffect(() => {
-    console.log('Current rides status:', rides.map(ride => ({
-      id: ride.id.substring(0, 8),
-      status: ride.status,
-      payment_status: ride.payment_status
-    })));
-  }, [rides]);
-  
-  useEffect(() => {
-    if (pickupDisplayAddress) {
-      setPickupAddress(pickupDisplayAddress);
-    }
+    if (pickupDisplayAddress) setPickupAddress(pickupDisplayAddress);
   }, [pickupDisplayAddress]);
 
   useEffect(() => {
-    if (destinationDisplayAddress) {
-      setDestinationAddress(destinationDisplayAddress);
-    }
+    if (destinationDisplayAddress) setDestinationAddress(destinationDisplayAddress);
   }, [destinationDisplayAddress]);
 
   useEffect(() => {
-    console.log('Checking rides for payment requirements. Total rides:', rides.length);
-    const awaitingPaymentRide = rides.find(ride => 
-      ride.status === 'awaiting_payment' && 
-      ride.payment_status === 'pending'
-    );
-    console.log('Awaiting payment ride found:', awaitingPaymentRide?.id || 'none');
+    const awaitingPaymentRide = rides.find(ride => ride.status === 'awaiting_payment');
     if (awaitingPaymentRide && !showPaymentModal) {
-      console.log('Showing payment modal for ride:', awaitingPaymentRide.id);
       setRideForPayment(awaitingPaymentRide);
       setShowPaymentModal(true);
-    } else if (!awaitingPaymentRide && showPaymentModal && rideForPayment) {
-      console.log('No awaiting payment rides found, but modal is open. Checking if current ride is paid...');
-      const currentRideStatus = rides.find(r => r.id === rideForPayment.id);
-      if (currentRideStatus && (currentRideStatus.status === 'completed' || currentRideStatus.payment_status === 'paid')) {
-        console.log('Current ride is now paid/completed, closing modal');
-        setShowPaymentModal(false);
-        setRideForPayment(null);
-      }
     }
-  }, [rides, showPaymentModal, rideForPayment]);
+  }, [rides, showPaymentModal]);
 
   const handleMapClick = (lat: number, lng: number) => {
     if (!pickupCoords) {
@@ -183,7 +174,6 @@ export default function RiderDashboard() {
   };
 
   const getStatusColor = (status: string) => {
-    // ... (same as before)
     switch (status) {
       case 'requested': return 'bg-yellow-100 text-yellow-800';
       case 'accepted': return 'bg-blue-100 text-blue-800';
@@ -197,11 +187,7 @@ export default function RiderDashboard() {
   };
 
   const getStatusText = (status: string) => {
-    // ... (same as before)
-    switch (status) {
-      case 'awaiting_payment': return 'Awaiting Payment';
-      default: return status.replace('_', ' ');
-    }
+    return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   const mapMarkers = [
@@ -233,36 +219,16 @@ export default function RiderDashboard() {
                 <CardTitle>Book a Ride</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* ... (Book a ride form remains the same) ... */}
                  <div>
                   <Label htmlFor="pickup">Pickup Address</Label>
-                  <Input
-                    id="pickup"
-                    value={pickupAddress}
-                    onChange={(e) => setPickupAddress(e.target.value)}
-                    placeholder="Enter pickup location or click on map"
-                  />
-                  {pickupCoords && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      📍 {pickupCoords[0].toFixed(6)}, {pickupCoords[1].toFixed(6)}
-                    </p>
-                  )}
+                  <Input id="pickup" value={pickupAddress} onChange={(e) => setPickupAddress(e.target.value)} placeholder="Enter pickup location or click on map" />
+                  {pickupCoords && <p className="text-xs text-gray-500 mt-1">📍 {pickupCoords[0].toFixed(6)}, {pickupCoords[1].toFixed(6)}</p>}
                 </div>
                 <div>
                   <Label htmlFor="destination">Destination Address</Label>
-                  <Input
-                    id="destination"
-                    value={destinationAddress}
-                    onChange={(e) => setDestinationAddress(e.target.value)}
-                    placeholder="Enter destination or click on map"
-                  />
-                  {destinationCoords && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      📍 {destinationCoords[0].toFixed(6)}, {destinationCoords[1].toFixed(6)}
-                    </p>
-                  )}
+                  <Input id="destination" value={destinationAddress} onChange={(e) => setDestinationAddress(e.target.value)} placeholder="Enter destination or click on map" />
+                  {destinationCoords && <p className="text-xs text-gray-500 mt-1">📍 {destinationCoords[0].toFixed(6)}, {destinationCoords[1].toFixed(6)}</p>}
                 </div>
-                
                 {distance && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-center justify-between">
@@ -277,30 +243,15 @@ export default function RiderDashboard() {
                     </div>
                   </div>
                 )}
-                
                 <div className="h-64">
                   {isMapReady ? (
-                    <MapWrapper
-                      center={mapCenter}
-                      markers={mapMarkers}
-                      onMapClick={handleMapClick}
-                      className="h-full w-full"
-                    />
+                    <MapWrapper center={mapCenter} markers={mapMarkers} onMapClick={handleMapClick} className="h-full w-full" />
                   ) : (
-                    <div className="h-full w-full bg-gray-200 animate-pulse rounded-lg flex items-center justify-center">
-                      <div className="text-gray-500">Loading map...</div>
-                    </div>
+                    <div className="h-full w-full bg-gray-200 animate-pulse rounded-lg flex items-center justify-center"><div className="text-gray-500">Loading map...</div></div>
                   )}
                 </div>
-                
-                <Button
-                  onClick={handleRequestRide}
-                  disabled={isLoading || !pickupCoords || !destinationCoords}
-                  className="w-full"
-                >
-                  {isLoading ? 'Requesting...' : 
-                    distance ? `Request Ride (${formatDistance(distance)})` : 'Request Ride'
-                  }
+                <Button onClick={handleRequestRide} disabled={isLoading || !pickupCoords || !destinationCoords} className="w-full">
+                  {isLoading ? 'Requesting...' : distance ? `Request Ride (${formatDistance(distance)})` : 'Request Ride'}
                 </Button>
               </CardContent>
             </Card>
@@ -314,47 +265,33 @@ export default function RiderDashboard() {
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="font-medium">Status:</span>
-                      <Badge className={getStatusColor(currentRide.status)}>
-                        {getStatusText(currentRide.status)}
-                      </Badge>
+                      <Badge className={getStatusColor(currentRide.status)}>{getStatusText(currentRide.status)}</Badge>
                     </div>
-                    <div>
-                      <span className="font-medium">From:</span>
-                      <p className="text-sm text-gray-600">{currentRide.pickup_address}</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">To:</span>
-                      <p className="text-sm text-gray-600">{currentRide.destination_address}</p>
-                    </div>
-                    {/* UPDATED FARE DISPLAY */}
-                    <div className="flex justify-between">
-                      <span className="font-medium">Gross Fare:</span>
-                      <span>{formatRupees(currentRide.estimated_fare)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Your Cost:</span>
-                      <span className="text-green-600 font-semibold">
-                        {formatRupees(currentRide.estimated_fare)}
-                      </span>
-                    </div>
+                    <div><span className="font-medium">From:</span><p className="text-sm text-gray-600">{currentRide.pickup_address}</p></div>
+                    <div><span className="font-medium">To:</span><p className="text-sm text-gray-600">{currentRide.destination_address}</p></div>
+                    <div className="flex justify-between"><span className="font-medium">Fare:</span><span>{formatRupees(currentRide.estimated_fare)}</span></div>
                     {currentRide.driver && (
-                      <div>
-                        <span className="font-medium">Driver:</span>
-                        <p className="text-sm text-gray-600">
-                          {currentRide.driver.first_name} {currentRide.driver.last_name}
-                        </p>
-                      </div>
+                      <div><span className="font-medium">Driver:</span><p className="text-sm text-gray-600">{currentRide.driver.first_name} {currentRide.driver.last_name}</p></div>
                     )}
                     
-                    {/* UPDATED PAYMENT BUTTON */}
-                    {currentRide.status === 'awaiting_payment' && (
-                      <Button 
-                        onClick={() => handlePayNow(currentRide)}
-                        className="w-full mt-4"
-                      >
-                        Pay Now - {formatRupees(currentRide.estimated_fare)}
-                      </Button>
-                    )}
+                    {/* Action buttons container */}
+                    <div className="flex gap-2 mt-4">
+                      {canCancelRide(currentRide) && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleCancelRide(currentRide, 'Changed my mind')}
+                          disabled={isLoading || isCancelling}
+                        >
+                          {isCancelling ? 'Cancelling...' : 'Cancel Ride'}
+                        </Button>
+                      )}
+                      {currentRide.status === 'awaiting_payment' && (
+                        <Button onClick={() => handlePayNow(currentRide)} className="flex-1">
+                          Pay Now - {formatRupees(currentRide.estimated_fare)}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -364,52 +301,47 @@ export default function RiderDashboard() {
 
         <TabsContent value='history'>
             <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Ride History</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Ride History</CardTitle></CardHeader>
               <CardContent>
-                {rides.length === 0 ? (
-                  <p className="text-gray-500">No rides yet</p>
-                ) : (
+                {rides.length === 0 ? (<p className="text-gray-500">No rides yet</p>) : (
                   <div className="space-y-3">
                     {rides.map((ride) => (
                       <div key={ride.id} className="p-3 border rounded-lg">
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge className={getStatusColor(ride.status)}>
-                                {getStatusText(ride.status)}
-                              </Badge>
-                              <span className="text-sm text-gray-500">
-                                {new Date(ride.created_at).toLocaleDateString()}
-                              </span>
+                              <Badge className={getStatusColor(ride.status)}>{getStatusText(ride.status)}</Badge>
+                              <span className="text-sm text-gray-500">{new Date(ride.created_at).toLocaleDateString()}</span>
                             </div>
-                            <p className="text-sm">
-                              <span className="font-medium">From:</span> {ride.pickup_address}
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium">To:</span> {ride.destination_address}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            {/* UPDATED FARE DISPLAY */}
-                            <p className="font-medium">
-                              {formatRupees(ride.final_fare || ride.estimated_fare)}
-                            </p>
-                            {ride.driver && (
-                              <p className="text-sm text-gray-600">
-                                {ride.driver.first_name} {ride.driver.last_name}
+                            {/* Display cancellation info if ride was cancelled */}
+                            {ride.status === 'cancelled' && (
+                              <p className="text-xs text-red-600 mb-1">
+                                Cancelled by {ride.cancelled_by}
+                                {ride.cancellation_reason && `: ${ride.cancellation_reason}`}
                               </p>
                             )}
+                            <p className="text-sm"><span className="font-medium">From:</span> {ride.pickup_address}</p>
+                            <p className="text-sm"><span className="font-medium">To:</span> {ride.destination_address}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium">{formatRupees(ride.final_fare || ride.estimated_fare)}</p>
+                            {ride.driver && <p className="text-sm text-gray-600">{ride.driver.first_name}</p>}
                             
-                            {ride.status === 'awaiting_payment' && ride.payment_status === 'pending' && (
-                              <Button 
-                                size="sm" 
-                                onClick={() => handlePayNow(ride)}
+                            {/* Add cancel button for pending rides in history */}
+                            {canCancelRide(ride) && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleCancelRide(ride)}
                                 className="mt-2"
+                                disabled={isLoading || isCancelling}
                               >
-                                Pay Now
+                                {isCancelling ? '...' : 'Cancel'}
                               </Button>
+                            )}
+                            
+                            {ride.status === 'awaiting_payment' && (
+                              <Button size="sm" onClick={() => handlePayNow(ride)} className="mt-2">Pay Now</Button>
                             )}
                           </div>
                         </div>
@@ -421,20 +353,14 @@ export default function RiderDashboard() {
             </Card>
         </TabsContent>
 
-        <TabsContent value="profile">
-          <ProfileSettings />
-        </TabsContent>
+        <TabsContent value="profile"><ProfileSettings /></TabsContent>
       </Tabs>
 
       {rideForPayment && (
         <PaymentModal
           ride={rideForPayment}
           isOpen={showPaymentModal}
-          onClose={() => {
-            console.log('Payment modal closed manually');
-            setShowPaymentModal(false);
-            setRideForPayment(null);
-          }}
+          onClose={() => {setShowPaymentModal(false); setRideForPayment(null);}}
           onPaymentSuccess={handlePaymentSuccess}
         />
       )}

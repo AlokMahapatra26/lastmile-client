@@ -12,18 +12,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DriverEarnings from '../drivers/DriverEarnings';
 import ProfileSettings from '@/components/profile/ProfileSettings';
 import { AddressDisplay } from '@/components/ui/AddressDisplay';
-import { formatRupees } from '@/utils/currency'; // New import
+import { formatRupees } from '@/utils/currency';
+import { declineRide } from '@/lib/rideActions'; // Added import for declining rides
 
-// Helper function to get initial online status from localStorage
+// Helper functions for online status persistence
 const getInitialOnlineStatus = () => {
   if (typeof window !== 'undefined') {
-    const storedStatus = localStorage.getItem('driver-online-status');
-    return storedStatus === 'true';
+    return localStorage.getItem('driver-online-status') === 'true';
   }
-  return false; // Default offline for SSR
+  return false;
 };
 
-// Helper function to persist online status
 const persistOnlineStatus = (status: boolean) => {
   if (typeof window !== 'undefined') {
     localStorage.setItem('driver-online-status', status.toString());
@@ -38,11 +37,13 @@ export default function DriverDashboard() {
     initializeDriverRides,
     acceptRide, 
     updateRideStatus,
+    getAvailableRides, // Destructure getAvailableRides
     isLoading 
   } = useRideStore();
   
   const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // Combined loading state for actions
 
   const updateOnlineStatus = (status: boolean) => {
     setIsOnline(status);
@@ -50,114 +51,103 @@ export default function DriverDashboard() {
   };
 
   useEffect(() => {
-    const initializeRides = async () => {
+    const initialize = async () => {
       try {
         await initializeDriverRides();
-        setIsInitialized(true);
-        
         const state = useRideStore.getState();
         if (state.currentRide && ['accepted', 'picked_up', 'in_progress'].includes(state.currentRide.status)) {
           updateOnlineStatus(true);
         }
       } catch (error: any) {
-        console.error('Failed to initialize driver rides:', error);
-        toast.error('Failed to load ride data');
+        toast.error('Failed to load initial ride data');
+      } finally {
         setIsInitialized(true);
       }
     };
-
-    initializeRides();
+    initialize();
   }, [initializeDriverRides]);
 
   useEffect(() => {
     if (isOnline && isInitialized) {
-      console.log('Driver is online, starting ride polling');
-      
       const interval = setInterval(() => {
         const state = useRideStore.getState();
         if (!state.currentRide || ['completed', 'cancelled'].includes(state.currentRide.status)) {
           state.getAvailableRides();
         }
       }, 30000);
-      
       return () => clearInterval(interval);
-    } else if (isInitialized) {
-      console.log('Driver is offline');
     }
   }, [isOnline, isInitialized]);
-
+  
   useEffect(() => {
     if (isOnline && navigator.geolocation) {
-      console.log('Starting location updates');
-      
-      const updateLocation = () => {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            try {
-              await api.put('/api/users/location', {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-              });
-              console.log('Location updated');
-            } catch (error) {
-              console.error('Failed to update location:', error);
-            }
-          },
-          (error) => {
-            console.error('Error getting location:', error);
-          }
-        );
-      };
-
+      const updateLocation = () => navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            await api.put('/api/users/location', { latitude: position.coords.latitude, longitude: position.coords.longitude });
+          } catch (error) { console.error('Failed to update location:', error); }
+        },
+        (error) => console.error('Error getting location:', error)
+      );
       updateLocation();
       const interval = setInterval(updateLocation, 60000);
-      
-      return () => {
-        console.log('Stopping location updates');
-        clearInterval(interval);
-      };
+      return () => clearInterval(interval);
     }
   }, [isOnline]);
 
   const handleGoOnline = () => {
-    console.log('Driver going online');
     updateOnlineStatus(true);
-    
-    if (!currentRide || ['completed', 'cancelled'].includes(currentRide.status)) {
-      useRideStore.getState().getAvailableRides();
-    }
-    
-    toast.success('You are now online and available for rides');
+    getAvailableRides();
+    toast.success('You are now online');
   };
 
   const handleGoOffline = () => {
-    console.log('Driver going offline');
     updateOnlineStatus(false);
-    toast.success('You are now offline');
+    toast.info('You are now offline');
   };
 
   const handleAcceptRide = async (rideId: string) => {
+    setIsProcessing(true);
     try {
       await acceptRide(rideId);
       toast.success('Ride accepted!');
       updateOnlineStatus(true);
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // New function to handle declining rides
+  const handleDeclineRide = async (rideId: string, reason: string = '') => {
+    if (!confirm('Are you sure you want to decline this ride?')) {
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await declineRide(rideId, reason);
+      toast.success('Ride declined successfully');
+      // Refresh rides data
+      await getAvailableRides();
+      await initializeDriverRides(); // Re-check for any current ride
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleUpdateStatus = async (status: string) => {
     if (!currentRide) return;
-    
+    setIsProcessing(true);
     try {
       await updateRideStatus(currentRide.id, status);
       toast.success(`Ride status updated to ${status.replace('_', ' ')}`);
-      
-      if (['completed', 'cancelled'].includes(status)) {
-        toast.success('Ride completed! You can go offline or continue receiving rides.');
-      }
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -175,27 +165,20 @@ export default function DriverDashboard() {
 
   const getRideStatusActions = () => {
     if (!currentRide) return null;
-
     switch (currentRide.status) {
-      case 'accepted':
-        return <Button onClick={() => handleUpdateStatus('picked_up')}>Mark as Picked Up</Button>;
-      case 'picked_up':
-        return <Button onClick={() => handleUpdateStatus('in_progress')}>Start Trip</Button>;
-      case 'in_progress':
-        return <Button onClick={() => handleUpdateStatus('completed')}>Complete Trip</Button>;
-      default:
-        return null;
+      case 'accepted': return <Button onClick={() => handleUpdateStatus('picked_up')} disabled={isLoading || isProcessing}>Mark as Picked Up</Button>;
+      case 'picked_up': return <Button onClick={() => handleUpdateStatus('in_progress')} disabled={isLoading || isProcessing}>Start Trip</Button>;
+      case 'in_progress': return <Button onClick={() => handleUpdateStatus('completed')} disabled={isLoading || isProcessing}>Complete Trip</Button>;
+      default: return null;
     }
   };
 
   if (!isInitialized) {
     return (
-      <div className="p-6">
-        <div className="flex justify-center items-center min-h-[400px]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading driver dashboard...</p>
-          </div>
+      <div className="p-6 flex justify-center items-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading driver dashboard...</p>
         </div>
       </div>
     );
@@ -207,18 +190,10 @@ export default function DriverDashboard() {
         <div>
           <h1 className="text-2xl font-bold">Driver Dashboard</h1>
           <p className="text-gray-600">Welcome, {user?.first_name}!</p>
-          <p className="text-sm">
-            Status: <span className={`font-medium ${isOnline ? 'text-green-600' : 'text-red-600'}`}>
-              {isOnline ? 'Online' : 'Offline'}
-            </span>
-          </p>
+          <p className="text-sm">Status: <span className={`font-medium ${isOnline ? 'text-green-600' : 'text-red-600'}`}>{isOnline ? 'Online' : 'Offline'}</span></p>
         </div>
         <div className="flex items-center gap-4">
-          <Button
-            variant={isOnline ? "destructive" : "default"}
-            onClick={isOnline ? handleGoOffline : handleGoOnline}
-            disabled={isLoading}
-          >
+          <Button variant={isOnline ? "destructive" : "default"} onClick={isOnline ? handleGoOffline : handleGoOnline} disabled={isLoading}>
             {isOnline ? 'Go Offline' : 'Go Online'}
           </Button>
           <Button variant="outline" onClick={logout}>Logout</Button>
@@ -229,28 +204,20 @@ export default function DriverDashboard() {
         <TabsList>
           <TabsTrigger value="rides">Rides</TabsTrigger>
           <TabsTrigger value="earnings">Earnings</TabsTrigger>
-          <TabsTrigger value="profile">Profile</TabsTrigger> 
+          <TabsTrigger value="profile">Profile</TabsTrigger>
         </TabsList>
-
         <TabsContent value="rides">
           {currentRide && ['accepted', 'picked_up', 'in_progress'].includes(currentRide.status) && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-blue-800 font-medium">
-                You have an active ride in status: <Badge className={getStatusColor(currentRide.status)}>
-                  {currentRide.status.replace('_', ' ')}
-                </Badge>
-              </p>
+              <p className="text-blue-800 font-medium">You have an active ride in status: <Badge className={getStatusColor(currentRide.status)}>{currentRide.status.replace('_', ' ')}</Badge></p>
             </div>
           )}
-
           {!isOnline ? (
-            <Card>
-              <CardContent className="p-6 text-center">
-                <h3 className="text-lg font-medium mb-2">You're offline</h3>
-                <p className="text-gray-600 mb-4">Go online to start receiving ride requests</p>
-                <Button onClick={handleGoOnline}>Go Online</Button>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="p-6 text-center">
+              <h3 className="text-lg font-medium mb-2">You're offline</h3>
+              <p className="text-gray-600 mb-4">Go online to start receiving ride requests</p>
+              <Button onClick={handleGoOnline}>Go Online</Button>
+            </CardContent></Card>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {currentRide && ['accepted', 'picked_up', 'in_progress'].includes(currentRide.status) && (
@@ -258,41 +225,30 @@ export default function DriverDashboard() {
                   <CardHeader><CardTitle>Current Ride</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="font-medium">Status:</span>
-                        <Badge className={getStatusColor(currentRide.status)}>{currentRide.status.replace('_', ' ')}</Badge>
-                      </div>
-                      <div>
-                        <span className="font-medium">Rider:</span>
-                        <p className="text-sm text-gray-600">{currentRide.rider?.first_name} {currentRide.rider?.last_name}</p>
-                        <p className="text-sm text-gray-600">{currentRide.rider?.phone_number}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">Pickup: </span>
-                        <AddressDisplay lat={currentRide.pickup_latitude} lng={currentRide.pickup_longitude} fallback={currentRide.pickup_address} />
-                      </div>
-                      <div>
-                        <span className="font-medium">Destination: </span>
-                        <AddressDisplay lat={currentRide.destination_latitude} lng={currentRide.destination_longitude} fallback={currentRide.destination_address} />
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-medium">Gross Fare:</span>
-                        {/* UPDATED */}
-                        <span>{formatRupees(currentRide.estimated_fare)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-medium">Your Earnings (80%):</span>
-                        {/* UPDATED */}
-                        <span className="text-green-600 font-semibold">
-                          {formatRupees(Math.round(currentRide.estimated_fare * 0.8))}
-                        </span>
-                      </div>
+                      <div className="flex justify-between"><span className="font-medium">Status:</span><Badge className={getStatusColor(currentRide.status)}>{currentRide.status.replace('_', ' ')}</Badge></div>
+                      <div><span className="font-medium">Rider:</span><p className="text-sm text-gray-600">{currentRide.rider?.first_name} {currentRide.rider?.last_name}</p><p className="text-sm text-gray-600">{currentRide.rider?.phone_number}</p></div>
+                      <div><span className="font-medium">Pickup: </span><AddressDisplay lat={currentRide.pickup_latitude} lng={currentRide.pickup_longitude} fallback={currentRide.pickup_address} /></div>
+                      <div><span className="font-medium">Destination: </span><AddressDisplay lat={currentRide.destination_latitude} lng={currentRide.destination_longitude} fallback={currentRide.destination_address} /></div>
+                      <div className="flex justify-between"><span className="font-medium">Gross Fare:</span><span>{formatRupees(currentRide.estimated_fare)}</span></div>
+                      <div className="flex justify-between"><span className="font-medium">Your Earnings (80%):</span><span className="text-green-600 font-semibold">{formatRupees(Math.round(currentRide.estimated_fare * 0.8))}</span></div>
                     </div>
-                    {getRideStatusActions()}
+                    {/* UPDATED: Action buttons container */}
+                    <div className="flex gap-2 pt-2">
+                      {getRideStatusActions()}
+                      {currentRide.status === 'accepted' && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeclineRide(currentRide.id, 'Cannot complete ride')}
+                          disabled={isLoading || isProcessing}
+                        >
+                          {isProcessing ? '...' : 'Decline'}
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               )}
-
               {(!currentRide || ['completed', 'cancelled'].includes(currentRide.status)) && (
                 <Card className={currentRide && ['accepted', 'picked_up', 'in_progress'].includes(currentRide.status) ? "lg:col-span-1" : "lg:col-span-2"}>
                   <CardHeader><CardTitle>Available Rides</CardTitle></CardHeader>
@@ -306,31 +262,19 @@ export default function DriverDashboard() {
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <p className="font-medium">{ride.rider?.first_name} {ride.rider?.last_name}</p>
-                                {/* UPDATED */}
-                                <p className="text-sm text-gray-600">
-                                  Gross: {formatRupees(ride.estimated_fare)}
-                                </p>
-                                {/* UPDATED */}
-                                <p className="text-sm text-green-600 font-medium">
-                                  You earn: {formatRupees(Math.round(ride.estimated_fare * 0.8))}
-                                </p>
+                                <p className="text-sm text-gray-600">Gross: {formatRupees(ride.estimated_fare)}</p>
+                                <p className="text-sm text-green-600 font-medium">You earn: {formatRupees(Math.round(ride.estimated_fare * 0.8))}</p>
                               </div>
-                              <Button size="sm" onClick={() => handleAcceptRide(ride.id)} disabled={isLoading}>
-                                Accept
-                              </Button>
+                              {/* UPDATED: Accept/Decline buttons */}
+                              <div className="flex gap-2 flex-shrink-0">
+                                <Button size="sm" onClick={() => handleAcceptRide(ride.id)} disabled={isLoading || isProcessing}>Accept</Button>
+                                <Button size="sm" variant="outline" onClick={() => handleDeclineRide(ride.id, 'Not interested')} disabled={isLoading || isProcessing}>Decline</Button>
+                              </div>
                             </div>
                             <div className="space-y-1 text-sm">
-                              <div>
-                                <span className="font-medium">From: </span>
-                                <AddressDisplay lat={ride.pickup_latitude} lng={ride.pickup_longitude} fallback={ride.pickup_address} />
-                              </div>
-                              <div>
-                                <span className="font-medium">To: </span>
-                                <AddressDisplay lat={ride.destination_latitude} lng={ride.destination_longitude} fallback={ride.destination_address} />
-                              </div>
-                              <p className="text-gray-500">
-                                Requested {new Date(ride.created_at).toLocaleTimeString()}
-                              </p>
+                              <div><span className="font-medium">From: </span><AddressDisplay lat={ride.pickup_latitude} lng={ride.pickup_longitude} fallback={ride.pickup_address} /></div>
+                              <div><span className="font-medium">To: </span><AddressDisplay lat={ride.destination_latitude} lng={ride.destination_longitude} fallback={ride.destination_address} /></div>
+                              <p className="text-gray-500">Requested {new Date(ride.created_at).toLocaleTimeString()}</p>
                             </div>
                           </div>
                         ))}
@@ -342,7 +286,6 @@ export default function DriverDashboard() {
             </div>
           )}
         </TabsContent>
-
         <TabsContent value="earnings"><DriverEarnings /></TabsContent>
         <TabsContent value="profile"><ProfileSettings /></TabsContent>
       </Tabs>

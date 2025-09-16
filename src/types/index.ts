@@ -29,6 +29,9 @@ export interface Ride {
   created_at: string;
   rider?: User;
   driver?: User;
+  cancelled_by?: string;
+  cancellation_reason?: string;
+  cancelled_at?: string;
 }
 
 export interface CreateRideRequest {
