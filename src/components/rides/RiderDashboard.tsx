@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useShortAddress } from '@/hooks/useAddress'; // New import
+import { useShortAddress } from '@/hooks/useAddress';
 import { useAuthStore } from '@/store/auth';
 import { useRideStore } from '@/store/rides';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import PaymentModal from '@/components/payments/PaymentModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ProfileSettings from '@/components/profile/ProfileSettings';
 import { calculateDistance, formatDistance, estimateTravelTime } from '@/utils/distance';
+import { formatRupees } from '@/utils/currency'; // New import
 
 export default function RiderDashboard() {
   const { user, logout } = useAuthStore();
@@ -25,14 +26,13 @@ export default function RiderDashboard() {
   const [destinationAddress, setDestinationAddress] = useState('');
   const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<[number, number] | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>([37.7749, -122.4194]);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([20.2961, 85.8245]); // Centered on Vapi area
   const [isMapReady, setIsMapReady] = useState(false);
   
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [rideForPayment, setRideForPayment] = useState<any>(null);
   
-  // NEW: Get addresses for pickup and destination coordinates
   const { address: pickupDisplayAddress } = useShortAddress(
     pickupCoords?.[0],
     pickupCoords?.[1]
@@ -42,12 +42,10 @@ export default function RiderDashboard() {
     destinationCoords?.[1]
   );
 
-  // Calculate distance when both coordinates are available
   const distance = pickupCoords && destinationCoords 
     ? calculateDistance(pickupCoords, destinationCoords)
     : null;
 
-  // Updated handlePaymentSuccess function with proper error handling
   const handlePaymentSuccess = async () => {
     try {
       console.log('Payment successful, refreshing rides...');
@@ -64,14 +62,12 @@ export default function RiderDashboard() {
     }
   };
 
-  // Handle manual payment trigger
   const handlePayNow = (ride: any) => {
     console.log('Manual payment triggered for ride:', ride.id);
     setRideForPayment(ride);
     setShowPaymentModal(true);
   };
 
-  // Initialize map
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsMapReady(true);
@@ -79,7 +75,6 @@ export default function RiderDashboard() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Get location and fetch rides
   useEffect(() => {
     if (navigator.geolocation && isMapReady) {
       navigator.geolocation.getCurrentPosition(
@@ -87,7 +82,7 @@ export default function RiderDashboard() {
           const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
           setMapCenter(coords);
           setPickupCoords(coords);
-          setPickupAddress('Getting address...'); // Let hook fetch address
+          setPickupAddress('Getting address...');
         },
         (error) => {
           console.error('Error getting location:', error);
@@ -96,13 +91,11 @@ export default function RiderDashboard() {
       );
     }
 
-    // Fetch rides on component mount
     getMyRides().catch((error) => {
       toast.error(error.message);
     });
   }, [getMyRides, isMapReady]);
 
-  // Debug logging for rides
   useEffect(() => {
     console.log('Current rides status:', rides.map(ride => ({
       id: ride.id.substring(0, 8),
@@ -111,22 +104,18 @@ export default function RiderDashboard() {
     })));
   }, [rides]);
   
-  // NEW: Update pickup address when coordinates change
   useEffect(() => {
     if (pickupDisplayAddress) {
       setPickupAddress(pickupDisplayAddress);
     }
   }, [pickupDisplayAddress]);
 
-  // NEW: Update destination address when coordinates change
   useEffect(() => {
     if (destinationDisplayAddress) {
       setDestinationAddress(destinationDisplayAddress);
     }
   }, [destinationDisplayAddress]);
 
-
-  // Updated useEffect for payment modal - check for rides needing payment
   useEffect(() => {
     console.log('Checking rides for payment requirements. Total rides:', rides.length);
     const awaitingPaymentRide = rides.find(ride => 
@@ -149,7 +138,6 @@ export default function RiderDashboard() {
     }
   }, [rides, showPaymentModal, rideForPayment]);
 
-  // NEW: Updated handleMapClick to use address hook
   const handleMapClick = (lat: number, lng: number) => {
     if (!pickupCoords) {
       setPickupCoords([lat, lng]);
@@ -195,6 +183,7 @@ export default function RiderDashboard() {
   };
 
   const getStatusColor = (status: string) => {
+    // ... (same as before)
     switch (status) {
       case 'requested': return 'bg-yellow-100 text-yellow-800';
       case 'accepted': return 'bg-blue-100 text-blue-800';
@@ -208,6 +197,7 @@ export default function RiderDashboard() {
   };
 
   const getStatusText = (status: string) => {
+    // ... (same as before)
     switch (status) {
       case 'awaiting_payment': return 'Awaiting Payment';
       default: return status.replace('_', ' ');
@@ -215,14 +205,8 @@ export default function RiderDashboard() {
   };
 
   const mapMarkers = [
-    ...(pickupCoords ? [{
-      position: pickupCoords,
-      popup: 'Pickup Location'
-    }] : []),
-    ...(destinationCoords ? [{
-      position: destinationCoords,
-      popup: 'Destination'
-    }] : [])
+    ...(pickupCoords ? [{ position: pickupCoords, popup: 'Pickup Location' }] : []),
+    ...(destinationCoords ? [{ position: destinationCoords, popup: 'Destination' }] : [])
   ];
 
   return (
@@ -249,7 +233,8 @@ export default function RiderDashboard() {
                 <CardTitle>Book a Ride</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
+                {/* ... (Book a ride form remains the same) ... */}
+                 <div>
                   <Label htmlFor="pickup">Pickup Address</Label>
                   <Input
                     id="pickup"
@@ -257,7 +242,6 @@ export default function RiderDashboard() {
                     onChange={(e) => setPickupAddress(e.target.value)}
                     placeholder="Enter pickup location or click on map"
                   />
-                  {/* NEW: Display coordinates */}
                   {pickupCoords && (
                     <p className="text-xs text-gray-500 mt-1">
                       📍 {pickupCoords[0].toFixed(6)}, {pickupCoords[1].toFixed(6)}
@@ -272,7 +256,6 @@ export default function RiderDashboard() {
                     onChange={(e) => setDestinationAddress(e.target.value)}
                     placeholder="Enter destination or click on map"
                   />
-                  {/* NEW: Display coordinates */}
                   {destinationCoords && (
                     <p className="text-xs text-gray-500 mt-1">
                       📍 {destinationCoords[0].toFixed(6)}, {destinationCoords[1].toFixed(6)}
@@ -343,9 +326,16 @@ export default function RiderDashboard() {
                       <span className="font-medium">To:</span>
                       <p className="text-sm text-gray-600">{currentRide.destination_address}</p>
                     </div>
+                    {/* UPDATED FARE DISPLAY */}
                     <div className="flex justify-between">
-                      <span className="font-medium">Estimated Fare:</span>
-                      <span>${(currentRide.estimated_fare / 100).toFixed(2)}</span>
+                      <span className="font-medium">Gross Fare:</span>
+                      <span>{formatRupees(currentRide.estimated_fare)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Your Cost:</span>
+                      <span className="text-green-600 font-semibold">
+                        {formatRupees(currentRide.estimated_fare)}
+                      </span>
                     </div>
                     {currentRide.driver && (
                       <div>
@@ -356,12 +346,13 @@ export default function RiderDashboard() {
                       </div>
                     )}
                     
+                    {/* UPDATED PAYMENT BUTTON */}
                     {currentRide.status === 'awaiting_payment' && (
                       <Button 
                         onClick={() => handlePayNow(currentRide)}
                         className="w-full mt-4"
                       >
-                        Pay Now - ${(currentRide.estimated_fare / 100).toFixed(2)}
+                        Pay Now - {formatRupees(currentRide.estimated_fare)}
                       </Button>
                     )}
                   </div>
@@ -401,8 +392,9 @@ export default function RiderDashboard() {
                             </p>
                           </div>
                           <div className="text-right">
+                            {/* UPDATED FARE DISPLAY */}
                             <p className="font-medium">
-                              ${((ride.final_fare || ride.estimated_fare) / 100).toFixed(2)}
+                              {formatRupees(ride.final_fare || ride.estimated_fare)}
                             </p>
                             {ride.driver && (
                               <p className="text-sm text-gray-600">

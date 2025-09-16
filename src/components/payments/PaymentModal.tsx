@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import PaymentForm from './PaymentForm';
 import { Ride } from '@/types';
+import { formatRupees } from '@/utils/currency'; // New import
 
 interface PaymentModalProps {
   ride: Ride;
@@ -23,7 +24,10 @@ export default function PaymentModal({ ride, isOpen, onClose, onPaymentSuccess }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md" style={{zIndex:2999}}>
+      <DialogContent 
+        className="max-w-md" 
+        style={{ zIndex: 2000 }} // zIndex updated
+      >
         <DialogHeader>
           <DialogTitle>Payment Required</DialogTitle>
         </DialogHeader>
@@ -35,7 +39,7 @@ export default function PaymentModal({ ride, isOpen, onClose, onPaymentSuccess }
               Your ride from {ride.pickup_address} to {ride.destination_address} has been completed.
             </p>
             <div className="text-2xl font-bold text-green-600">
-              ${(ride.estimated_fare / 100).toFixed(2)}
+              {formatRupees(ride.estimated_fare)}
             </div>
             <p className="text-sm text-gray-500">Total Fare</p>
           </div>

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { formatRupees } from '@/utils/currency'; // New import
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
@@ -87,7 +88,7 @@ function CheckoutForm({ rideId, amount, onSuccess }: PaymentFormProps) {
         disabled={!stripe || isProcessing}
         className="w-full"
       >
-        {isProcessing ? 'Processing...' : `Pay $${(amount / 100).toFixed(2)}`}
+        {isProcessing ? 'Processing...' : `Pay ${formatRupees(amount)}`}
       </Button>
     </form>
   );

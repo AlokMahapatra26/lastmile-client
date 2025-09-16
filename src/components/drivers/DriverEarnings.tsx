@@ -5,11 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Calendar, TrendingUp, DollarSign, Car } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { AddressDisplay } from '../ui/AddressDisplay';
+import { formatRupees } from '@/utils/currency'; // Updated import
 
 interface DriverStats {
   totalStats: {
@@ -68,10 +68,6 @@ export default function DriverEarnings() {
     fetchStats();
   };
 
-  const formatCurrency = (cents: number) => {
-    return `${(cents / 100).toFixed(2)}`;
-  };
-
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -96,13 +92,11 @@ export default function DriverEarnings() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold mb-2">Driver Earnings</h1>
         <p className="text-gray-600">Track your rides and earnings</p>
       </div>
 
-      {/* Date Filter */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -138,7 +132,6 @@ export default function DriverEarnings() {
         </CardContent>
       </Card>
 
-      {/* Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">
@@ -158,7 +151,7 @@ export default function DriverEarnings() {
               <div>
                 <p className="text-sm text-gray-600">Gross Earnings</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {formatCurrency(stats.totalStats.totalGrossEarnings)}
+                  {formatRupees(stats.totalStats.totalGrossEarnings)}
                 </p>
                 <p className="text-xs text-gray-500">What riders paid</p>
               </div>
@@ -173,7 +166,7 @@ export default function DriverEarnings() {
               <div>
                 <p className="text-sm text-gray-600">Platform Fee (20%)</p>
                 <p className="text-2xl font-bold text-red-600">
-                  -{formatCurrency(stats.totalStats.platformFee)}
+                  -{formatRupees(stats.totalStats.platformFee)}
                 </p>
                 <p className="text-xs text-gray-500">Our commission</p>
               </div>
@@ -188,7 +181,7 @@ export default function DriverEarnings() {
               <div>
                 <p className="text-sm text-gray-600">Your Earnings</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {formatCurrency(stats.totalStats.totalNetEarnings)}
+                  {formatRupees(stats.totalStats.totalNetEarnings)}
                 </p>
                 <p className="text-xs text-gray-500">Available to withdraw</p>
               </div>
@@ -198,7 +191,6 @@ export default function DriverEarnings() {
         </Card>
       </div>
 
-      {/* Period Breakdown */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
@@ -213,7 +205,7 @@ export default function DriverEarnings() {
               <div className="flex justify-between">
                 <span className="text-gray-600">Earnings:</span>
                 <span className="font-semibold text-green-600">
-                  {formatCurrency(stats.periodStats.today.earnings)}
+                  {formatRupees(stats.periodStats.today.earnings)}
                 </span>
               </div>
             </div>
@@ -233,7 +225,7 @@ export default function DriverEarnings() {
               <div className="flex justify-between">
                 <span className="text-gray-600">Earnings:</span>
                 <span className="font-semibold text-green-600">
-                  {formatCurrency(stats.periodStats.week.earnings)}
+                  {formatRupees(stats.periodStats.week.earnings)}
                 </span>
               </div>
             </div>
@@ -253,7 +245,7 @@ export default function DriverEarnings() {
               <div className="flex justify-between">
                 <span className="text-gray-600">Earnings:</span>
                 <span className="font-semibold text-green-600">
-                  {formatCurrency(stats.periodStats.month.earnings)}
+                  {formatRupees(stats.periodStats.month.earnings)}
                 </span>
               </div>
             </div>
@@ -261,7 +253,6 @@ export default function DriverEarnings() {
         </Card>
       </div>
 
-      {/* Withdrawal Section */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Ready to Withdraw</CardTitle>
@@ -271,7 +262,7 @@ export default function DriverEarnings() {
             <div>
               <p className="text-sm text-gray-600">Available Balance</p>
               <p className="text-3xl font-bold text-green-600">
-                {formatCurrency(stats.totalStats.availableToWithdraw)}
+                {formatRupees(stats.totalStats.availableToWithdraw)}
               </p>
               <p className="text-sm text-gray-500 mt-1">
                 From {stats.totalStats.totalRides} completed rides
@@ -284,55 +275,54 @@ export default function DriverEarnings() {
         </CardContent>
       </Card>
 
-      {/* Recent Rides */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Recent Rides</CardTitle>
         </CardHeader>
-       <CardContent>
-  {stats.recentRides.length === 0 ? (
-    <p className="text-gray-500 text-center py-4">No rides found</p>
-  ) : (
-    <div className="space-y-3">
-      {stats.recentRides.map((ride) => (
-        <div key={ride.id} className="flex items-center justify-between p-3 border rounded-lg">
-          <div className="flex-1">
-            <div className="text-sm">
-              <span className="font-medium">From: </span>
-              <AddressDisplay 
-                lat={ride.pickup_latitude} 
-                lng={ride.pickup_longitude}
-                fallback={ride.pickup_address}
-                className="inline"
-              />
+        <CardContent>
+          {stats.recentRides.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No rides found</p>
+          ) : (
+            <div className="space-y-3">
+              {stats.recentRides.map((ride) => (
+                <div key={ride.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <div className="text-sm">
+                      <span className="font-medium">From: </span>
+                      <AddressDisplay 
+                        lat={ride.pickup_latitude} 
+                        lng={ride.pickup_longitude}
+                        fallback={ride.pickup_address}
+                        className="inline"
+                      />
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-medium">To: </span>
+                      <AddressDisplay 
+                        lat={ride.destination_latitude} 
+                        lng={ride.destination_longitude}
+                        fallback={ride.destination_address}
+                        className="inline"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {new Date(ride.created_at).toLocaleDateString()} at{' '}
+                      {new Date(ride.created_at).toLocaleTimeString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">
+                      Gross: {formatRupees(ride.final_fare || ride.estimated_fare)}
+                    </p>
+                    <p className="font-semibold text-green-600">
+                      You earned: {formatRupees(Math.round((ride.final_fare || ride.estimated_fare) * 0.8))}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="text-sm">
-              <span className="font-medium">To: </span>
-              <AddressDisplay 
-                lat={ride.destination_latitude} 
-                lng={ride.destination_longitude}
-                fallback={ride.destination_address}
-                className="inline"
-              />
-            </div>
-            <p className="text-xs text-gray-500">
-              {new Date(ride.created_at).toLocaleDateString()} at{' '}
-              {new Date(ride.created_at).toLocaleTimeString()}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">
-              Gross: ${((ride.final_fare || ride.estimated_fare) / 100).toFixed(2)}
-            </p>
-            <p className="font-semibold text-green-600">
-              You earned: ${ (Math.round((ride.final_fare || ride.estimated_fare) * 0.8) / 100).toFixed(2) }
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  )}
-</CardContent>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
