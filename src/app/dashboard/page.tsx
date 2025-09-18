@@ -7,17 +7,16 @@ import RiderDashboard from '@/components/rides/RiderDashboard';
 import DriverDashboard from '@/components/rides/DriverDashboard';
 
 export default function DashboardPage() {
-  const { user, isHydrated } = useAuthStore(); // NEW: Also get isHydrated
+  const { user, isHydrated } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
-    // Only redirect if hydration is complete AND user is null
+   
     if (isHydrated && !user) {
       router.push('/login');
     }
-  }, [user, router, isHydrated]); // NEW: Include isHydrated in dependencies
-
-  // NEW: Show loading state while hydrating
+  }, [user, router, isHydrated]); 
+  
   if (!isHydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -29,7 +28,7 @@ export default function DashboardPage() {
     );
   }
 
-  // Show loading if user is null after hydration (redirect in progress)
+  
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">

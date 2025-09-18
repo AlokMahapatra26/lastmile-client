@@ -7,8 +7,8 @@ import { AuthProvider } from '@/components/auth/AuthProvider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Uber Clone',
-  description: 'A simple Uber clone application',
+  title: 'Lastmile',
+  description: 'A simple ride application',
 };
 
 export default function RootLayout({
